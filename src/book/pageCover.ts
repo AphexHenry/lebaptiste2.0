@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { Page, scaleHoleCoord, scaleHoleSize } from './page';
+import { programmingTrianglePath } from './pageProgramming';
 
 function circleHole(cx: number, cy: number, radius: number): THREE.Path {
   const [x, y] = scaleHoleCoord(cx, cy);
@@ -10,9 +11,10 @@ function circleHole(cx: number, cy: number, radius: number): THREE.Path {
 
 export class PageCover extends Page {
   constructor() {
-    super(0xf5e6d3, 2, 'Cover', () => [
+    super(0xf5e6d3, 3, 'Cover', () => [
       circleHole(-0.9, -0.8, 0.55),
       circleHole(0.9, 0.3, 0.55),
+      programmingTrianglePath(),
     ]);
   }
 }

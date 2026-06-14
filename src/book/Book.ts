@@ -12,6 +12,7 @@ import {
 import { PageCover } from './pageCover';
 import { PageAboutMe } from './pageAboutMe';
 import { PageArt } from './pageArt';
+import { PageProgramming } from './pageProgramming';
 
 const FLIP_DURATION = 1.8;
 
@@ -38,6 +39,7 @@ export class Book {
   readonly cover: PageCover;
   readonly aboutMe: PageAboutMe;
   readonly art: PageArt;
+  readonly programming: PageProgramming;
   readonly pages: Page[];
 
   private flipAnimation: FlipAnimation | null = null;
@@ -48,7 +50,8 @@ export class Book {
     this.cover = new PageCover();
     this.aboutMe = new PageAboutMe();
     this.art = new PageArt();
-    this.pages = [this.aboutMe, this.art, this.cover];
+    this.programming = new PageProgramming();
+    this.pages = [this.aboutMe, this.art, this.programming, this.cover];
 
     for (const page of this.pages) {
       this.group.add(page.mesh);

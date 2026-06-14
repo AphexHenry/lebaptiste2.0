@@ -1,6 +1,7 @@
 import './style.css';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { Book, BOOK_FRONT_NORMAL, BOOK_CAMERA_DISTANCE, perspectiveFovForPageBounds } from './book/Book';
 import { addDebugTools, addLightDebugTools } from './debugTools';
 
@@ -20,6 +21,12 @@ function bootstrap() {
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1;
+
+  // const pmrem = new THREE.PMREMGenerator(renderer);
+  // scene.environment = pmrem.fromScene(new RoomEnvironment()).texture;
+  // pmrem.dispose();
 
   const book = new Book();
 
