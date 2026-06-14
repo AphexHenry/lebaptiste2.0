@@ -1,7 +1,8 @@
 import './style.css';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { Book, BOOK_FRONT_NORMAL } from './book/Book';
+import { Book, BOOK_FRONT_NORMAL, BOOK_CAMERA_DISTANCE, orthographicFrustumHeight } from './book/Book';
+import { getPageWidth } from './book/page';
 import { addDebugTools } from './debugTools';
 
 function bootstrap() {
@@ -13,7 +14,7 @@ function bootstrap() {
 
   addDebugTools(scene);
 
-  const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
+  const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
 
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -58,7 +59,7 @@ function bootstrap() {
   book.addToScene(scene);
   const focus = book.getWorldFocusPoint();
   controls.target.copy(focus);
-  camera.position.copy(focus).addScaledVector(BOOK_FRONT_NORMAL, 6);
+  camera.position.copy(focus).addScaledVector(BOOK_FRONT_NORMAL, BOOK_CAMERA_DISTANCE);
   controls.update();
 
   // On +Z side, shining toward the cover front.
@@ -82,13 +83,24 @@ function bootstrap() {
     }
   });
 
-  function onResize() {
-    const { innerWidth, innerHeight } = window;
-    camera.aspect = innerWidth / innerHeight;
+  function updateCameraFrustum() {
+    const aspect = window.innerWidth / window.innerHeight;
+    book.setViewportAspect(aspect);
+    const halfHeight = orthographicFrustumHeight() / 2;
+    const halfWidth = getPageWidth() / 2;
+    camera.left = -halfWidth;
+    camera.right = halfWidth;
+    camera.top = halfHeight;
+    camera.bottom = -halfHeight;
     camera.updateProjectionMatrix();
-    renderer.setSize(innerWidth, innerHeight);
   }
 
+  function onResize() {
+    updateCameraFrustum();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  }
+
+  updateCameraFrustum();
   window.addEventListener('resize', onResize);
 
   function animate() {

@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 
-export const PLANE_SIZE = 4;
+/** World units along the shorter viewport axis; the longer axis scales with aspect ratio. */
+export const PAGE_REFERENCE = 4;
+
 export const THICKNESS = 0.06;
 
 /** Large readable face in page-local space (+Z). */
@@ -9,16 +11,62 @@ export const PAGE_FRONT_NORMAL = new THREE.Vector3(0, 0, 1);
 /** Z coordinate of the front face center in page-local space. */
 export const FRONT_FACE_Z = THICKNESS / 2;
 
+const REF_WIDTH = PAGE_REFERENCE;
+const REF_HEIGHT = PAGE_REFERENCE;
+
+export type PageDimensions = { width: number; height: number };
+
+let pageDimensions: PageDimensions = { width: REF_WIDTH, height: REF_HEIGHT };
+
+/** @deprecated Use {@link getPageWidth} / {@link getPageDimensions}. */
+export const PLANE_SIZE = PAGE_REFERENCE;
+
+export function getPageDimensions(): PageDimensions {
+  return pageDimensions;
+}
+
+export function getPageWidth(): number {
+  return pageDimensions.width;
+}
+
+export function getPageHeight(): number {
+  return pageDimensions.height;
+}
+
 /** Left edge X in book-local space; pages hinge here on the world-up axis. */
-export const LEFT_HINGE_X = -PLANE_SIZE / 2;
+export function getLeftHingeX(): number {
+  return -pageDimensions.width / 2;
+}
+
+export function setPageViewportAspect(aspect: number): PageDimensions {
+  pageDimensions =
+    aspect >= 1
+      ? { height: PAGE_REFERENCE, width: PAGE_REFERENCE * aspect }
+      : { width: PAGE_REFERENCE, height: PAGE_REFERENCE / aspect };
+  return pageDimensions;
+}
+
+function scaleFromReference(value: number, axis: 'x' | 'y'): number {
+  const scale = axis === 'x' ? pageDimensions.width / REF_WIDTH : pageDimensions.height / REF_HEIGHT;
+  return value * scale;
+}
+
+export function scaleHoleCoord(x: number, y: number): [number, number] {
+  return [scaleFromReference(x, 'x'), scaleFromReference(y, 'y')];
+}
+
+export function scaleHoleSize(size: number): number {
+  return size * Math.min(pageDimensions.width / REF_WIDTH, pageDimensions.height / REF_HEIGHT);
+}
 
 export function createPageShape(holes: THREE.Path[] = []) {
-  const half = PLANE_SIZE / 2;
+  const halfW = pageDimensions.width / 2;
+  const halfH = pageDimensions.height / 2;
   const shape = new THREE.Shape();
-  shape.moveTo(-half, -half);
-  shape.lineTo(half, -half);
-  shape.lineTo(half, half);
-  shape.lineTo(-half, half);
+  shape.moveTo(-halfW, -halfH);
+  shape.lineTo(halfW, -halfH);
+  shape.lineTo(halfW, halfH);
+  shape.lineTo(-halfW, halfH);
   shape.closePath();
 
   for (const hole of holes) {
@@ -28,7 +76,7 @@ export function createPageShape(holes: THREE.Path[] = []) {
   return shape;
 }
 
-function createPageGeometry(holes: THREE.Path[]) {
+export function createPageGeometry(holes: THREE.Path[] = []) {
   const shape = createPageShape(holes);
 
   const geometry = new THREE.ExtrudeGeometry(shape, {
@@ -39,56 +87,37 @@ function createPageGeometry(holes: THREE.Path[]) {
   return geometry;
 }
 
-function createLabel(name: string): THREE.Mesh {
-  const canvas = document.createElement('canvas');
-  const width = 512;
-  const height = 128;
-  canvas.width = width;
-  canvas.height = height;
-
-  const ctx = canvas.getContext('2d')!;
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, width, height);
-  ctx.fillStyle = '#1a1008';
-  ctx.font = 'bold 72px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(name, width / 2, height / 2);
-
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.needsUpdate = true;
-
-  const labelWidth = 1.8;
-  const labelHeight = labelWidth * (height / width);
-  const material = new THREE.MeshBasicMaterial({
-    map: texture,
-    polygonOffset: true,
-    polygonOffsetFactor: -4,
-    polygonOffsetUnits: -4,
-  });
-  const label = new THREE.Mesh(new THREE.PlaneGeometry(labelWidth, labelHeight), material);
-  label.position.set(0, 0, FRONT_FACE_Z + 0.01);
-  label.renderOrder = 1;
-  return label;
-}
-
 export class Page {
   readonly mesh: THREE.Mesh;
   readonly stackIndex: number;
   readonly name: string;
+  private readonly buildHoles: () => THREE.Path[];
+  private holes: THREE.Path[];
 
-  constructor(color: number, stackIndex: number, name: string, holes: THREE.Path[] = []) {
+  constructor(
+    color: number,
+    stackIndex: number,
+    name: string,
+    buildHoles: () => THREE.Path[] = () => [],
+  ) {
     this.stackIndex = stackIndex;
     this.name = name;
+    this.buildHoles = buildHoles;
+    this.holes = buildHoles();
     this.mesh = new THREE.Mesh(
-      createPageGeometry(holes),
+      createPageGeometry(this.holes),
       new THREE.MeshStandardMaterial({ color, roughness: 0.7 }),
     );
     this.mesh.position.z = stackIndex * THICKNESS;
     this.mesh.castShadow = true;
     this.mesh.receiveShadow = true;
     this.mesh.userData.page = this;
-    // this.mesh.add(createLabel(name));
+  }
+
+  rebuildGeometry() {
+    this.holes = this.buildHoles();
+    this.mesh.geometry.dispose();
+    this.mesh.geometry = createPageGeometry(this.holes);
   }
 
   dispose() {

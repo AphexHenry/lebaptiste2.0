@@ -1,5 +1,14 @@
 import * as THREE from 'three';
-import { Page, THICKNESS, PAGE_FRONT_NORMAL, FRONT_FACE_Z, LEFT_HINGE_X } from './page';
+import {
+  Page,
+  THICKNESS,
+  PAGE_FRONT_NORMAL,
+  FRONT_FACE_Z,
+  getLeftHingeX,
+  getPageHeight,
+  PAGE_REFERENCE,
+  setPageViewportAspect,
+} from './page';
 import { PageCover } from './pageCover';
 import { PageAboutMe } from './pageAboutMe';
 import { PageArt } from './pageArt';
@@ -8,6 +17,14 @@ const FLIP_DURATION = 1.8;
 
 /** World-space direction toward the reader (camera on +Z, pages face +Z). */
 export const BOOK_FRONT_NORMAL = new THREE.Vector3(0, 0, 1);
+
+/** Default camera offset along {@link BOOK_FRONT_NORMAL} from the book focus point. */
+export const BOOK_CAMERA_DISTANCE = PAGE_REFERENCE * 1.5;
+
+/** Orthographic frustum height for the current page dimensions. */
+export function orthographicFrustumHeight(): number {
+  return getPageHeight();
+}
 
 type FlipAnimation = {
   pivot: THREE.Group;
@@ -66,6 +83,13 @@ export class Book {
     scene.add(this.group);
   }
 
+  setViewportAspect(aspect: number) {
+    setPageViewportAspect(aspect);
+    for (const page of this.pages) {
+      page.rebuildGeometry();
+    }
+  }
+
   onPointerClick(event: PointerEvent, camera: THREE.Camera, canvas: HTMLCanvasElement) {
     if (this.flipAnimation) return;
 
@@ -117,12 +141,12 @@ export class Book {
     const pivotZ = (clickedIndex + 1) * THICKNESS;
 
     const pivot = new THREE.Group();
-    pivot.position.set(LEFT_HINGE_X, 0, pivotZ);
+    pivot.position.set(getLeftHingeX(), 0, pivotZ);
     this.group.add(pivot);
 
     for (const page of pagesAbove) {
       this.group.remove(page.mesh);
-      page.mesh.position.x -= LEFT_HINGE_X;
+      page.mesh.position.x -= getLeftHingeX();
       page.mesh.position.z -= pivotZ;
       pivot.add(page.mesh);
     }

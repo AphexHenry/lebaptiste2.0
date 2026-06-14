@@ -1,5 +1,13 @@
 import * as THREE from 'three';
-import { Page, createPageShape, FRONT_FACE_Z, PLANE_SIZE } from './page';
+import {
+  Page,
+  createPageShape,
+  FRONT_FACE_Z,
+  getPageWidth,
+  getPageHeight,
+  scaleHoleCoord,
+  scaleHoleSize,
+} from './page';
 
 const TEXTURE_SIZE = 512;
 
@@ -15,11 +23,13 @@ const PASTEL_COLORS = [
 ];
 
 function triangleHole(cx: number, cy: number, size: number): THREE.Path {
-  const height = (size * Math.sqrt(3)) / 2;
+  const [x, y] = scaleHoleCoord(cx, cy);
+  const scaled = scaleHoleSize(size);
+  const height = (scaled * Math.sqrt(3)) / 2;
   const hole = new THREE.Path();
-  hole.moveTo(cx, cy + height / 2);
-  hole.lineTo(cx - size / 2, cy - height / 2);
-  hole.lineTo(cx + size / 2, cy - height / 2);
+  hole.moveTo(x, y + height / 2);
+  hole.lineTo(x - scaled / 2, y - height / 2);
+  hole.lineTo(x + scaled / 2, y - height / 2);
   hole.closePath();
   return hole;
 }
@@ -64,12 +74,13 @@ function createTexturedFrontFace(texture: THREE.CanvasTexture): THREE.Mesh {
   const buffer = geometry as unknown as THREE.BufferGeometry;
   const uv = buffer.attributes.uv;
   const pos = buffer.attributes.position;
-  const half = PLANE_SIZE / 2;
+  const halfW = getPageWidth() / 2;
+  const halfH = getPageHeight() / 2;
 
   for (let i = 0; i < uv.count; i++) {
     const x = pos.getX(i);
     const y = pos.getY(i);
-    uv.setXY(i, (x + half) / PLANE_SIZE, (y + half) / PLANE_SIZE);
+    uv.setXY(i, (x + halfW) / getPageWidth(), (y + halfH) / getPageHeight());
   }
   uv.needsUpdate = true;
 
@@ -83,33 +94,51 @@ function createTexturedFrontFace(texture: THREE.CanvasTexture): THREE.Mesh {
 
   const face = new THREE.Mesh(geometry, material);
   face.position.z = FRONT_FACE_Z + 0.005;
+  face.name = 'texturedFrontFace';
   return face;
 }
 
 export class PageArt extends Page {
   private readonly texture: THREE.CanvasTexture;
   private readonly ctx: CanvasRenderingContext2D;
-  private readonly canvas: HTMLCanvasElement;
+  private canvas: HTMLCanvasElement;
+  private texturedFace: THREE.Mesh | null = null;
   private time = 0;
 
   constructor() {
-    super(0xa88b5e, 1, 'Art', [triangleHole(0, 0, 1.4)]);
+    super(0xa88b5e, 1, 'Art', () => [triangleHole(0, 0, 1.4)]);
 
     this.canvas = document.createElement('canvas');
-    this.canvas.width = TEXTURE_SIZE;
-    this.canvas.height = TEXTURE_SIZE;
-    this.ctx = this.canvas.getContext('2d')!;
-
     this.texture = new THREE.CanvasTexture(this.canvas);
-    drawWavyTexture(this.ctx, TEXTURE_SIZE, TEXTURE_SIZE, this.time);
-    this.texture.needsUpdate = true;
+    this.ctx = this.canvas.getContext('2d')!;
+    this.resizeTexture();
+    this.texturedFace = createTexturedFrontFace(this.texture);
+    this.mesh.add(this.texturedFace);
+  }
 
-    this.mesh.add(createTexturedFrontFace(this.texture));
+  private resizeTexture() {
+    const aspect = getPageWidth() / getPageHeight();
+    this.canvas.width = Math.round(TEXTURE_SIZE * aspect);
+    this.canvas.height = TEXTURE_SIZE;
+    drawWavyTexture(this.ctx, this.canvas.width, this.canvas.height, this.time);
+    this.texture.needsUpdate = true;
+  }
+
+  rebuildGeometry() {
+    super.rebuildGeometry();
+    if (this.texturedFace) {
+      this.mesh.remove(this.texturedFace);
+      this.texturedFace.geometry.dispose();
+      (this.texturedFace.material as THREE.Material).dispose();
+    }
+    this.resizeTexture();
+    this.texturedFace = createTexturedFrontFace(this.texture);
+    this.mesh.add(this.texturedFace);
   }
 
   update(delta: number) {
     this.time += delta;
-    drawWavyTexture(this.ctx, TEXTURE_SIZE, TEXTURE_SIZE, this.time);
+    drawWavyTexture(this.ctx, this.canvas.width, this.canvas.height, this.time);
     this.texture.needsUpdate = true;
   }
 }
