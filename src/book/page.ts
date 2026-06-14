@@ -12,7 +12,7 @@ export const FRONT_FACE_Z = THICKNESS / 2;
 /** Left edge X in book-local space; pages hinge here on the world-up axis. */
 export const LEFT_HINGE_X = -PLANE_SIZE / 2;
 
-function createPageGeometry(holes: THREE.Path[]) {
+export function createPageShape(holes: THREE.Path[] = []) {
   const half = PLANE_SIZE / 2;
   const shape = new THREE.Shape();
   shape.moveTo(-half, -half);
@@ -24,6 +24,12 @@ function createPageGeometry(holes: THREE.Path[]) {
   for (const hole of holes) {
     shape.holes.push(hole);
   }
+
+  return shape;
+}
+
+function createPageGeometry(holes: THREE.Path[]) {
+  const shape = createPageShape(holes);
 
   const geometry = new THREE.ExtrudeGeometry(shape, {
     depth: THICKNESS,

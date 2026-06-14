@@ -94,6 +94,8 @@ export class Book {
   }
 
   update(delta: number) {
+    this.art.update(delta);
+
     if (!this.flipAnimation) return;
 
     this.flipAnimation.progress += delta / FLIP_DURATION;
