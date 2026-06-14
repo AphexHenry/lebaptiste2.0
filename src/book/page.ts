@@ -2,7 +2,6 @@ import * as THREE from 'three';
 
 export const PLANE_SIZE = 4;
 export const THICKNESS = 0.06;
-export const GAP = 0.4;
 
 function createPageGeometry(holes: THREE.Path[]) {
   const half = PLANE_SIZE / 2;
@@ -34,7 +33,7 @@ export class Page {
       createPageGeometry(holes),
       new THREE.MeshStandardMaterial({ color, roughness: 0.7 }),
     );
-    this.mesh.position.y = stackIndex * (THICKNESS + GAP);
+    this.mesh.position.y = stackIndex * THICKNESS;
     this.mesh.castShadow = true;
     this.mesh.receiveShadow = true;
   }

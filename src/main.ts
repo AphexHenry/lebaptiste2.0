@@ -1,10 +1,7 @@
 import './style.css';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { GAP, THICKNESS } from './book/page';
-import { PageCover } from './book/pageCover';
-import { PageAboutMe } from './book/pageAboutMe';
-import { PageArt } from './book/pageArt';
+import { Book } from './book/Book';
 
 function bootstrap() {
   const canvas = document.getElementById('canvas') as HTMLCanvasElement;
@@ -22,9 +19,11 @@ function bootstrap() {
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
+  const book = new Book();
+
   const controls = new OrbitControls(camera, canvas);
   controls.enableDamping = true;
-  controls.target.set(0, GAP + THICKNESS, 0);
+  controls.target.set(0, book.centerY, 0);
 
   const ambient = new THREE.AmbientLight(0xffffff, 0.15);
   scene.add(ambient);
@@ -55,9 +54,7 @@ function bootstrap() {
   const shadowHelper = new THREE.CameraHelper(light.shadow.camera);
   scene.add(shadowHelper);
 
-  for (const page of [new PageCover(), new PageAboutMe(), new PageArt()]) {
-    page.addToScene(scene);
-  }
+  book.addToScene(scene);
 
   function onResize() {
     const { innerWidth, innerHeight } = window;
