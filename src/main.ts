@@ -1,11 +1,10 @@
 import './style.css';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-
-const PLANE_SIZE = 4;
-const THICKNESS = 0.06;
-const GAP = 0.4;
-const PLANE_COLORS = [0xf5e6d3, 0xd4b896, 0xa88b5e];
+import { GAP, THICKNESS } from './book/page';
+import { PageCover } from './book/pageCover';
+import { PageAboutMe } from './book/pageAboutMe';
+import { PageArt } from './book/pageArt';
 
 function bootstrap() {
   const canvas = document.getElementById('canvas') as HTMLCanvasElement;
@@ -56,15 +55,8 @@ function bootstrap() {
   const shadowHelper = new THREE.CameraHelper(light.shadow.camera);
   scene.add(shadowHelper);
 
-  for (let i = 0; i < 3; i++) {
-    const mesh = new THREE.Mesh(
-      new THREE.BoxGeometry(PLANE_SIZE, THICKNESS, PLANE_SIZE),
-      new THREE.MeshStandardMaterial({ color: PLANE_COLORS[i], roughness: 0.7 }),
-    );
-    mesh.position.y = i * (THICKNESS + GAP);
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    scene.add(mesh);
+  for (const page of [new PageCover(), new PageAboutMe(), new PageArt()]) {
+    page.addToScene(scene);
   }
 
   function onResize() {
