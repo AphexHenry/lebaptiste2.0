@@ -2,6 +2,7 @@ import './style.css';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { Book, BOOK_FRONT_NORMAL } from './book/Book';
+import { addDebugTools } from './debugTools';
 
 function bootstrap() {
   const canvas = document.getElementById('canvas') as HTMLCanvasElement;
@@ -10,13 +11,7 @@ function bootstrap() {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x1a1a2e);
 
-  const yAxisArrow = new THREE.ArrowHelper(
-    new THREE.Vector3(0, 1, 0),
-    new THREE.Vector3(-2.5, 0, 0),
-    2,
-    0x00ff00,
-  );
-  scene.add(yAxisArrow);
+  addDebugTools(scene);
 
   const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
 
@@ -66,8 +61,9 @@ function bootstrap() {
   camera.position.copy(focus).addScaledVector(BOOK_FRONT_NORMAL, 6);
   controls.update();
 
-  // Near -Z axis, shining toward the cover front.
-  light.position.set(0, 1.5, -5);
+  // On +Z side, shining toward the cover front.
+  light.position.copy(focus).addScaledVector(BOOK_FRONT_NORMAL, 5);
+  light.position.y = focus.y + 1.5;
   light.target.position.copy(focus);
   lightMarker.position.copy(light.position);
 

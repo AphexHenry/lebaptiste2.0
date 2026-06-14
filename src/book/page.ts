@@ -3,11 +3,14 @@ import * as THREE from 'three';
 export const PLANE_SIZE = 4;
 export const THICKNESS = 0.06;
 
-/** Large readable face in page-local space (becomes world -Z after book orientation). */
-export const PAGE_FRONT_NORMAL = new THREE.Vector3(0, 1, 0);
+/** Large readable face in page-local space (+Z). */
+export const PAGE_FRONT_NORMAL = new THREE.Vector3(0, 0, 1);
 
-/** Y coordinate of the front face center in page-local space. */
-export const FRONT_FACE_Y = THICKNESS / 2;
+/** Z coordinate of the front face center in page-local space. */
+export const FRONT_FACE_Z = THICKNESS / 2;
+
+/** Left edge X in book-local space; pages hinge here on the world-up axis. */
+export const LEFT_HINGE_X = -PLANE_SIZE / 2;
 
 function createPageGeometry(holes: THREE.Path[]) {
   const half = PLANE_SIZE / 2;
@@ -26,8 +29,7 @@ function createPageGeometry(holes: THREE.Path[]) {
     depth: THICKNESS,
     bevelEnabled: false,
   });
-  geometry.rotateX(-Math.PI / 2);
-  geometry.translate(0, -THICKNESS / 2, 0);
+  geometry.translate(0, 0, -THICKNESS / 2);
   return geometry;
 }
 
@@ -59,11 +61,7 @@ function createLabel(name: string): THREE.Mesh {
     polygonOffsetUnits: -4,
   });
   const label = new THREE.Mesh(new THREE.PlaneGeometry(labelWidth, labelHeight), material);
-  // Face the page front (+Y local → world -Z after book orientation).
-  label.rotation.x = -Math.PI / 2;
-  // Texture up was pointing to world -Y; flip in-plane so text reads with Y up.
-  label.rotation.z = Math.PI;
-  label.position.set(0, FRONT_FACE_Y + 0.01, 0);
+  label.position.set(0, 0, FRONT_FACE_Z + 0.01);
   label.renderOrder = 1;
   return label;
 }
@@ -80,7 +78,7 @@ export class Page {
       createPageGeometry(holes),
       new THREE.MeshStandardMaterial({ color, roughness: 0.7 }),
     );
-    this.mesh.position.y = stackIndex * THICKNESS;
+    this.mesh.position.z = stackIndex * THICKNESS;
     this.mesh.castShadow = true;
     this.mesh.receiveShadow = true;
     this.mesh.userData.page = this;

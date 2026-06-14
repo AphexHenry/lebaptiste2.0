@@ -1,13 +1,13 @@
 import * as THREE from 'three';
-import { Page, PLANE_SIZE, THICKNESS, PAGE_FRONT_NORMAL, FRONT_FACE_Y } from './page';
+import { Page, THICKNESS, PAGE_FRONT_NORMAL, FRONT_FACE_Z, LEFT_HINGE_X } from './page';
 import { PageCover } from './pageCover';
 import { PageAboutMe } from './pageAboutMe';
 import { PageArt } from './pageArt';
 
-const FLIP_DURATION = 0.8;
+const FLIP_DURATION = 1.8;
 
-/** World-space front normal once the book group is oriented (toward the reader). */
-export const BOOK_FRONT_NORMAL = new THREE.Vector3(0, 0, -1);
+/** World-space direction toward the reader (camera on +Z, pages face +Z). */
+export const BOOK_FRONT_NORMAL = new THREE.Vector3(0, 0, 1);
 
 type FlipAnimation = {
   pivot: THREE.Group;
@@ -36,13 +36,10 @@ export class Book {
       this.group.add(page.mesh);
     }
 
-    // Stand the book up so the cover faces world -Z.
-    this.group.rotation.x = -Math.PI / 2;
-
     const coverFrontCenter = new THREE.Vector3(
       0,
-      this.cover.stackIndex * THICKNESS + FRONT_FACE_Y,
       0,
+      this.cover.stackIndex * THICKNESS + FRONT_FACE_Z,
     );
     const frontIndicator = new THREE.ArrowHelper(
       PAGE_FRONT_NORMAL.clone(),
@@ -53,7 +50,7 @@ export class Book {
     this.group.add(frontIndicator);
   }
 
-  get centerY(): number {
+  get centerZ(): number {
     return ((this.pages.length - 1) * THICKNESS) / 2;
   }
 
@@ -62,7 +59,7 @@ export class Book {
   }
 
   getWorldFocusPoint(target = new THREE.Vector3()): THREE.Vector3 {
-    return target.set(0, this.centerY, 0).applyMatrix4(this.group.matrixWorld);
+    return target.set(0, 0, this.centerZ).applyMatrix4(this.group.matrixWorld);
   }
 
   addToScene(scene: THREE.Scene) {
@@ -102,7 +99,8 @@ export class Book {
     this.flipAnimation.progress += delta / FLIP_DURATION;
     const t = Math.min(this.flipAnimation.progress, 1);
     const eased = 1 - (1 - t) ** 3;
-    this.flipAnimation.pivot.rotation.x = eased * Math.PI;
+    // Rotate around Y at the left hinge; page folds toward +Z.
+    this.flipAnimation.pivot.rotation.y = -eased * Math.PI;
 
     if (t >= 1) {
       this.finishFlip();
@@ -113,17 +111,16 @@ export class Book {
     const pagesAbove = this.pages.slice(clickedIndex + 1);
     if (pagesAbove.length === 0) return;
 
-    const pivotY = (clickedIndex + 1) * THICKNESS;
-    const hingeZ = -PLANE_SIZE / 2;
+    const pivotZ = (clickedIndex + 1) * THICKNESS;
 
     const pivot = new THREE.Group();
-    pivot.position.set(0, pivotY, hingeZ);
+    pivot.position.set(LEFT_HINGE_X, 0, pivotZ);
     this.group.add(pivot);
 
     for (const page of pagesAbove) {
       this.group.remove(page.mesh);
-      page.mesh.position.y -= pivotY;
-      page.mesh.position.z -= hingeZ;
+      page.mesh.position.x -= LEFT_HINGE_X;
+      page.mesh.position.z -= pivotZ;
       pivot.add(page.mesh);
     }
 
