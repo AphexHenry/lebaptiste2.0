@@ -2,7 +2,7 @@ import './style.css';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { Book, BOOK_FRONT_NORMAL, BOOK_CAMERA_DISTANCE, perspectiveFovForPageBounds } from './book/Book';
-import { addDebugTools } from './debugTools';
+import { addDebugTools, addLightDebugTools } from './debugTools';
 
 function bootstrap() {
   const canvas = document.getElementById('canvas') as HTMLCanvasElement;
@@ -26,7 +26,7 @@ function bootstrap() {
   const controls = new OrbitControls(camera, canvas);
   controls.enableDamping = true;
 
-  const ambient = new THREE.AmbientLight(0xffffff, 0.15);
+  const ambient = new THREE.AmbientLight(0xffffff, 0.85);
   scene.add(ambient);
 
   const light = new THREE.DirectionalLight(0xfff5e0, 2);
@@ -42,18 +42,7 @@ function bootstrap() {
   scene.add(light);
   scene.add(light.target);
 
-  const lightMarker = new THREE.Mesh(
-    new THREE.SphereGeometry(0.2, 16, 16),
-    new THREE.MeshBasicMaterial({ color: 0xffdd44 }),
-  );
-  lightMarker.position.copy(light.position);
-  scene.add(lightMarker);
-
-  const lightHelper = new THREE.DirectionalLightHelper(light, 0.8, 0xffdd44);
-  scene.add(lightHelper);
-
-  const shadowHelper = new THREE.CameraHelper(light.shadow.camera);
-  scene.add(shadowHelper);
+  const lightDebug = addLightDebugTools(scene, light);
 
   book.addToScene(scene);
   const focus = book.getWorldFocusPoint();
@@ -65,7 +54,7 @@ function bootstrap() {
   light.position.copy(focus).addScaledVector(BOOK_FRONT_NORMAL, 5);
   light.position.y = focus.y + 0.3;
   light.target.position.copy(focus);
-  lightMarker.position.copy(light.position);
+  lightDebug.syncPosition(light.position);
 
   const clock = new THREE.Clock();
   let pointerDown = { x: 0, y: 0 };
@@ -103,8 +92,7 @@ function bootstrap() {
     const delta = clock.getDelta();
     book.update(delta);
     controls.update();
-    lightHelper.update();
-    shadowHelper.update();
+    lightDebug.update();
     renderer.render(scene, camera);
   }
 

@@ -22,6 +22,13 @@ const PASTEL_COLORS = [
   '#f0f4c3',
 ];
 
+function circleHole(cx: number, cy: number, radius: number): THREE.Path {
+  const [x, y] = scaleHoleCoord(cx, cy);
+  const hole = new THREE.Path();
+  hole.absarc(x, y, scaleHoleSize(radius), 0, Math.PI * 2, true);
+  return hole;
+}
+
 function triangleHole(cx: number, cy: number, size: number): THREE.Path {
   const [x, y] = scaleHoleCoord(cx, cy);
   const scaled = scaleHoleSize(size);
@@ -32,6 +39,10 @@ function triangleHole(cx: number, cy: number, size: number): THREE.Path {
   hole.lineTo(x + scaled / 2, y - height / 2);
   hole.closePath();
   return hole;
+}
+
+function buildArtHoles(): THREE.Path[] {
+  return [triangleHole(0, 0, 1.4), circleHole(-0.9, -0.8, 0.55)];
 }
 
 function drawWavyTexture(
@@ -70,7 +81,7 @@ function drawWavyTexture(
 }
 
 function createTexturedFrontFace(texture: THREE.CanvasTexture): THREE.Mesh {
-  const geometry = new THREE.ShapeGeometry(createPageShape([triangleHole(0, 0, 1.4)]));
+  const geometry = new THREE.ShapeGeometry(createPageShape(buildArtHoles()));
   const buffer = geometry as unknown as THREE.BufferGeometry;
   const uv = buffer.attributes.uv;
   const pos = buffer.attributes.position;
@@ -108,7 +119,7 @@ export class PageArt extends Page {
   private time = 0;
 
   constructor() {
-    super(0xa88b5e, 1, 'Art', () => [triangleHole(0, 0, 1.4)]);
+    super(0xa88b5e, 1, 'Art', buildArtHoles);
 
     this.canvas = document.createElement('canvas');
     this.texture = new THREE.CanvasTexture(this.canvas);
