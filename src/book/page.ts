@@ -3,7 +3,7 @@ import * as THREE from 'three';
 /** World units along the shorter viewport axis; the longer axis scales with aspect ratio. */
 export const PAGE_REFERENCE = 4;
 
-export const THICKNESS = 0.06;
+export const THICKNESS = 0.01;
 
 /** Large readable face in page-local space (+Z). */
 export const PAGE_FRONT_NORMAL = new THREE.Vector3(0, 0, 1);

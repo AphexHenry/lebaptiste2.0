@@ -64,7 +64,7 @@ function bootstrap() {
 
   // On +Z side, shining toward the cover front.
   light.position.copy(focus).addScaledVector(BOOK_FRONT_NORMAL, 5);
-  light.position.y = focus.y + 1.5;
+  light.position.y = focus.y + 0.3;
   light.target.position.copy(focus);
   lightMarker.position.copy(light.position);
 

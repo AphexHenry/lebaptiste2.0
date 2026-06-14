@@ -94,6 +94,8 @@ function createTexturedFrontFace(texture: THREE.CanvasTexture): THREE.Mesh {
 
   const face = new THREE.Mesh(geometry, material);
   face.position.z = FRONT_FACE_Z + 0.005;
+  face.castShadow = true;
+  face.receiveShadow = true;
   face.name = 'texturedFrontFace';
   return face;
 }
