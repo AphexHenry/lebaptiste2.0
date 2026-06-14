@@ -88,7 +88,7 @@ export class Page {
     this.mesh.castShadow = true;
     this.mesh.receiveShadow = true;
     this.mesh.userData.page = this;
-    this.mesh.add(createLabel(name));
+    // this.mesh.add(createLabel(name));
   }
 
   dispose() {
