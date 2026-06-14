@@ -98,7 +98,8 @@ export class Book {
 
     this.flipAnimation.progress += delta / FLIP_DURATION;
     const t = Math.min(this.flipAnimation.progress, 1);
-    const eased = 1 - (1 - t) ** 3;
+    const eased =
+      t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
     // Rotate around Y at the left hinge; page folds toward +Z.
     this.flipAnimation.pivot.rotation.y = -eased * Math.PI;
 
