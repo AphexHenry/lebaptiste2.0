@@ -9,7 +9,7 @@ function circleHole(cx: number, cy: number, radius: number): THREE.Path {
 
 export class PageCover extends Page {
   constructor() {
-    super(0xf5e6d3, 0, [
+    super(0xf5e6d3, 2, 'Cover', [
       circleHole(-0.9, 0, 0.55),
       circleHole(0.9, 0, 0.55),
     ]);

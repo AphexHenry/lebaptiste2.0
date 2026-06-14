@@ -13,6 +13,6 @@ function triangleHole(cx: number, cy: number, size: number): THREE.Path {
 
 export class PageArt extends Page {
   constructor() {
-    super(0xa88b5e, 2, [triangleHole(0, 0, 1.4)]);
+    super(0xa88b5e, 1, 'Art', [triangleHole(0, 0, 1.4)]);
   }
 }

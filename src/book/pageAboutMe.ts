@@ -14,6 +14,6 @@ function squareHole(cx: number, cy: number, size: number): THREE.Path {
 
 export class PageAboutMe extends Page {
   constructor() {
-    super(0xd4b896, 1, [squareHole(0, 0, 1.2)]);
+    super(0xd4b896, 0, 'About Me', [squareHole(0, 0, 1.2)]);
   }
 }
