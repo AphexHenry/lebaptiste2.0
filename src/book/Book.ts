@@ -21,9 +21,10 @@ export const BOOK_FRONT_NORMAL = new THREE.Vector3(0, 0, 1);
 /** Default camera offset along {@link BOOK_FRONT_NORMAL} from the book focus point. */
 export const BOOK_CAMERA_DISTANCE = PAGE_REFERENCE * 1.5;
 
-/** Orthographic frustum height for the current page dimensions. */
-export function orthographicFrustumHeight(): number {
-  return getPageHeight();
+/** Vertical FOV (degrees) so page bounds fill the view at {@link BOOK_CAMERA_DISTANCE}. */
+export function perspectiveFovForPageBounds(): number {
+  const halfHeight = getPageHeight() / 2;
+  return THREE.MathUtils.radToDeg(2 * Math.atan(halfHeight / BOOK_CAMERA_DISTANCE));
 }
 
 type FlipAnimation = {

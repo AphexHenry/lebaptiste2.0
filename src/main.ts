@@ -1,8 +1,7 @@
 import './style.css';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { Book, BOOK_FRONT_NORMAL, BOOK_CAMERA_DISTANCE, orthographicFrustumHeight } from './book/Book';
-import { getPageWidth } from './book/page';
+import { Book, BOOK_FRONT_NORMAL, BOOK_CAMERA_DISTANCE, perspectiveFovForPageBounds } from './book/Book';
 import { addDebugTools } from './debugTools';
 
 function bootstrap() {
@@ -14,7 +13,7 @@ function bootstrap() {
 
   addDebugTools(scene);
 
-  const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
+  const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
 
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -86,12 +85,8 @@ function bootstrap() {
   function updateCameraFrustum() {
     const aspect = window.innerWidth / window.innerHeight;
     book.setViewportAspect(aspect);
-    const halfHeight = orthographicFrustumHeight() / 2;
-    const halfWidth = getPageWidth() / 2;
-    camera.left = -halfWidth;
-    camera.right = halfWidth;
-    camera.top = halfHeight;
-    camera.bottom = -halfHeight;
+    camera.aspect = aspect;
+    camera.fov = perspectiveFovForPageBounds();
     camera.updateProjectionMatrix();
   }
 
