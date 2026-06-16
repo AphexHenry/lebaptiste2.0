@@ -5,8 +5,6 @@ import {
   FRONT_FACE_Z,
   getPageWidth,
   getPageHeight,
-  scaleHoleCoord,
-  scaleHoleSize,
 } from './page';
 
 const TEXTURE_SIZE = 512;
@@ -21,29 +19,6 @@ const PASTEL_COLORS = [
   '#dcedc8',
   '#f0f4c3',
 ];
-
-function circleHole(cx: number, cy: number, radius: number): THREE.Path {
-  const [x, y] = scaleHoleCoord(cx, cy);
-  const hole = new THREE.Path();
-  hole.absarc(x, y, scaleHoleSize(radius), 0, Math.PI * 2, true);
-  return hole;
-}
-
-function triangleHole(cx: number, cy: number, size: number): THREE.Path {
-  const [x, y] = scaleHoleCoord(cx, cy);
-  const scaled = scaleHoleSize(size);
-  const height = (scaled * Math.sqrt(3)) / 2;
-  const hole = new THREE.Path();
-  hole.moveTo(x, y + height / 2);
-  hole.lineTo(x - scaled / 2, y - height / 2);
-  hole.lineTo(x + scaled / 2, y - height / 2);
-  hole.closePath();
-  return hole;
-}
-
-function buildArtHoles(): THREE.Path[] {
-  return [triangleHole(0, 0, 1.4), circleHole(-0.9, -0.8, 0.55)];
-}
 
 function drawWavyTexture(
   ctx: CanvasRenderingContext2D,
@@ -80,8 +55,11 @@ function drawWavyTexture(
   }
 }
 
-function createTexturedFrontFace(texture: THREE.CanvasTexture): THREE.Mesh {
-  const geometry = new THREE.ShapeGeometry(createPageShape(buildArtHoles()));
+function createTexturedFrontFace(
+  texture: THREE.CanvasTexture,
+  holes: THREE.Path[],
+): THREE.Mesh {
+  const geometry = new THREE.ShapeGeometry(createPageShape(holes));
   const buffer = geometry as unknown as THREE.BufferGeometry;
   const uv = buffer.attributes.uv;
   const pos = buffer.attributes.position;
@@ -119,14 +97,12 @@ export class PageArt extends Page {
   private time = 0;
 
   constructor() {
-    super(0xa88b5e, 1, 'Art', buildArtHoles);
+    super(0xa88b5e, 'Art');
 
     this.canvas = document.createElement('canvas');
     this.texture = new THREE.CanvasTexture(this.canvas);
     this.ctx = this.canvas.getContext('2d')!;
-    this.resizeTexture();
-    this.texturedFace = createTexturedFrontFace(this.texture);
-    this.mesh.add(this.texturedFace);
+    this.rebuildDecorations();
   }
 
   private resizeTexture() {
@@ -137,15 +113,14 @@ export class PageArt extends Page {
     this.texture.needsUpdate = true;
   }
 
-  rebuildGeometry() {
-    super.rebuildGeometry();
+  protected rebuildDecorations() {
     if (this.texturedFace) {
       this.mesh.remove(this.texturedFace);
       this.texturedFace.geometry.dispose();
       (this.texturedFace.material as THREE.Material).dispose();
     }
     this.resizeTexture();
-    this.texturedFace = createTexturedFrontFace(this.texture);
+    this.texturedFace = createTexturedFrontFace(this.texture, this.holes);
     this.mesh.add(this.texturedFace);
   }
 

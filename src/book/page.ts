@@ -89,36 +89,43 @@ export function createPageGeometry(holes: THREE.Path[] = []) {
 
 export class Page {
   readonly mesh: THREE.Mesh;
-  readonly stackIndex: number;
   readonly name: string;
-  private readonly buildHoles: () => THREE.Path[];
-  private holes: THREE.Path[];
+  /** See-through holes currently punched in this page (set by the book layout). */
+  protected holes: THREE.Path[] = [];
 
-  constructor(
-    color: number,
-    stackIndex: number,
-    name: string,
-    buildHoles: () => THREE.Path[] = () => [],
-  ) {
-    this.stackIndex = stackIndex;
+  constructor(color: number, name: string) {
     this.name = name;
-    this.buildHoles = buildHoles;
-    this.holes = buildHoles();
     this.mesh = new THREE.Mesh(
       createPageGeometry(this.holes),
       new THREE.MeshStandardMaterial({ color, roughness: 0.7 }),
     );
-    this.mesh.position.z = stackIndex * THICKNESS;
     this.mesh.castShadow = true;
     this.mesh.receiveShadow = true;
     this.mesh.userData.page = this;
   }
 
+  /** Replace the see-through holes punched in this page and rebuild it. */
+  setHoles(holes: THREE.Path[]) {
+    this.holes = holes;
+    this.rebuildGeometry();
+  }
+
+  /** Position the page along the stack depth (Z). Higher Z is closer to the reader. */
+  setDepth(z: number) {
+    this.mesh.position.z = z;
+  }
+
   rebuildGeometry() {
-    this.holes = this.buildHoles();
     this.mesh.geometry.dispose();
     this.mesh.geometry = createPageGeometry(this.holes);
+    this.rebuildDecorations();
   }
+
+  /** Hook for subclasses to (re)build hole-aware decorations such as textures. */
+  protected rebuildDecorations() {}
+
+  /** Hook for subclasses with per-frame animation. */
+  update(_delta: number) {}
 
   dispose() {
     this.mesh.traverse((object) => {

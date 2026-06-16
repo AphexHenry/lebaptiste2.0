@@ -9,12 +9,10 @@ import {
   PAGE_REFERENCE,
   setPageViewportAspect,
 } from './page';
-import { PageCover } from './pageCover';
-import { PageAboutMe } from './pageAboutMe';
-import { PageArt } from './pageArt';
-import { PageProgramming } from './pageProgramming';
+import { PageNode, Portal, createBookTree } from './bookTree';
 
-const FLIP_DURATION = 1.8;
+/** Seconds to flip a single page. */
+const FLIP_DURATION = 0.9;
 
 /** World-space direction toward the reader (camera on +Z, pages face +Z). */
 export const BOOK_FRONT_NORMAL = new THREE.Vector3(0, 0, 1);
@@ -28,55 +26,86 @@ export function perspectiveFovForPageBounds(): number {
   return THREE.MathUtils.radToDeg(2 * Math.atan(halfHeight / BOOK_CAMERA_DISTANCE));
 }
 
-type FlipAnimation = {
+type Flip = {
   pivot: THREE.Group;
+  page: Page;
   progress: number;
-  pagesToRemove: Page[];
 };
 
+/**
+ * Renders a book as a linear page stack while navigation is driven by a tree
+ * (see {@link bookTree}).
+ *
+ * ## The see-through trick
+ *
+ * The front page declares portal holes leading to its children. For the stack
+ * to be see-through, every page physically in front of a target must repeat the
+ * target's hole. With children ordered `[A, B, C]` behind the cover, the stack
+ * becomes:
+ *
+ * ```
+ * Cover { A, B, C }   A { B, C }   B { C }   C { }
+ * ```
+ *
+ * i.e. each child renders the portal holes of every child stacked behind it.
+ *
+ * ## Opening a page
+ *
+ * Clicking the hole that reveals page A moves A to the back of the order and
+ * recomputes holes. The render is unchanged, but A is now whole:
+ *
+ * ```
+ * Cover { A, B, C }   B { C, A }   C { A }   A { }
+ * ```
+ *
+ * Flipping away every page in front of A then reveals it as a clean page. A
+ * becomes the new root and the same logic applies to its own portals.
+ */
 export class Book {
   readonly group = new THREE.Group();
-  readonly cover: PageCover;
-  readonly aboutMe: PageAboutMe;
-  readonly art: PageArt;
-  readonly programming: PageProgramming;
-  readonly pages: Page[];
 
-  private flipAnimation: FlipAnimation | null = null;
+  private readonly root: PageNode;
+  private currentNode: PageNode;
+  /** Current node's portals in physical stack order (front child first). */
+  private orderedPortals: Portal[];
+  /** Pages currently in the scene graph, used for animation and picking. */
+  private mounted: Page[] = [];
+
+  private readonly frontIndicator: THREE.ArrowHelper;
+
+  private activeFlip: Flip | null = null;
+  private flipQueue: Page[] = [];
+  private pendingChild: PageNode | null = null;
+
   private readonly raycaster = new THREE.Raycaster();
   private readonly pointer = new THREE.Vector2();
 
   constructor() {
-    this.cover = new PageCover();
-    this.aboutMe = new PageAboutMe();
-    this.art = new PageArt();
-    this.programming = new PageProgramming();
-    this.pages = [this.aboutMe, this.art, this.programming, this.cover];
+    this.root = createBookTree();
+    this.currentNode = this.root;
+    this.orderedPortals = [...this.root.portals];
 
-    for (const page of this.pages) {
-      this.group.add(page.mesh);
-    }
-
-    const coverFrontCenter = new THREE.Vector3(
-      0,
-      0,
-      this.cover.stackIndex * THICKNESS + FRONT_FACE_Z,
-    );
-    const frontIndicator = new THREE.ArrowHelper(
+    this.frontIndicator = new THREE.ArrowHelper(
       PAGE_FRONT_NORMAL.clone(),
-      coverFrontCenter,
+      new THREE.Vector3(),
       1.2,
       0x3fd48d,
     );
-    this.group.add(frontIndicator);
+    this.group.add(this.frontIndicator);
+
+    for (const node of this.stackNodes()) {
+      this.group.add(node.page.mesh);
+    }
+    this.mounted = this.stackNodes().map((node) => node.page);
+    this.relayout();
   }
 
   get centerZ(): number {
-    return ((this.pages.length - 1) * THICKNESS) / 2;
+    return ((this.mounted.length - 1) * THICKNESS) / 2;
   }
 
   get isAnimating(): boolean {
-    return this.flipAnimation !== null;
+    return this.activeFlip !== null || this.flipQueue.length > 0;
   }
 
   getWorldFocusPoint(target = new THREE.Vector3()): THREE.Vector3 {
@@ -89,13 +118,11 @@ export class Book {
 
   setViewportAspect(aspect: number) {
     setPageViewportAspect(aspect);
-    for (const page of this.pages) {
-      page.rebuildGeometry();
-    }
+    this.relayout();
   }
 
   onPointerClick(event: PointerEvent, camera: THREE.Camera, canvas: HTMLCanvasElement) {
-    if (this.flipAnimation) return;
+    if (this.isAnimating) return;
 
     const rect = canvas.getBoundingClientRect();
     this.pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
@@ -103,7 +130,7 @@ export class Book {
 
     this.raycaster.setFromCamera(this.pointer, camera);
     const hits = this.raycaster.intersectObjects(
-      this.pages.map((page) => page.mesh),
+      this.mounted.map((page) => page.mesh),
       false,
     );
     if (hits.length === 0) return;
@@ -112,65 +139,136 @@ export class Book {
     while (hit && !hit.userData.page) {
       hit = hit.parent;
     }
-    if (!hit?.userData.page) return;
+    const page = hit?.userData.page as Page | undefined;
+    if (!page) return;
 
-    const page = hit.userData.page as Page;
-    const clickedIndex = this.pages.indexOf(page);
-    if (clickedIndex === -1) return;
+    // The first solid page the ray reaches is the page seen through the hole.
+    const portalIndex = this.orderedPortals.findIndex((p) => p.child.page === page);
+    if (portalIndex === -1) return;
 
-    this.flipPagesAbove(clickedIndex);
+    this.openPortal(portalIndex);
   }
 
   update(delta: number) {
-    this.art.update(delta);
+    for (const page of this.mounted) {
+      page.update(delta);
+    }
+    if (this.activeFlip) {
+      this.advanceFlip(delta);
+    }
+  }
 
-    if (!this.flipAnimation) return;
+  /** Stack from front (reader side) to back: current node, then ordered children. */
+  private stackNodes(): PageNode[] {
+    return [this.currentNode, ...this.orderedPortals.map((p) => p.child)];
+  }
 
-    this.flipAnimation.progress += delta / FLIP_DURATION;
-    const t = Math.min(this.flipAnimation.progress, 1);
-    const eased =
-      t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
-    // Rotate around Y at the left hinge; page folds toward +Z.
-    this.flipAnimation.pivot.rotation.y = -eased * Math.PI;
+  /**
+   * Recomputes the see-through holes and stack depth of every mounted page from
+   * the current node and child ordering.
+   */
+  private relayout() {
+    this.currentNode.page.setHoles(this.orderedPortals.map((p) => p.shape()));
+
+    this.orderedPortals.forEach((portal, index) => {
+      const holesBehind = this.orderedPortals.slice(index + 1).map((p) => p.shape());
+      portal.child.page.setHoles(holesBehind);
+    });
+
+    const nodes = this.stackNodes();
+    const frontZ = (nodes.length - 1) * THICKNESS;
+    nodes.forEach((node, index) => node.page.setDepth(frontZ - index * THICKNESS));
+
+    this.frontIndicator.position.set(0, 0, frontZ + FRONT_FACE_Z);
+  }
+
+  /**
+   * Sends the clicked portal's page to the back, rebuilds the equivalent render,
+   * then flips away everything in front of it before descending into it.
+   */
+  private openPortal(index: number) {
+    const target = this.orderedPortals[index];
+    this.orderedPortals.splice(index, 1);
+    this.orderedPortals.push(target);
+    this.relayout();
+
+    const stack = this.stackNodes();
+    const pagesInFront = stack.slice(0, -1).map((node) => node.page);
+    this.pendingChild = target.child;
+    this.flipQueue = pagesInFront;
+    this.startNextFlip();
+  }
+
+  private startNextFlip() {
+    const page = this.flipQueue.shift();
+    if (!page) {
+      this.descend();
+      return;
+    }
+
+    const pivotZ = page.mesh.position.z;
+    const pivot = new THREE.Group();
+    pivot.position.set(getLeftHingeX(), 0, pivotZ);
+    this.group.add(pivot);
+
+    this.group.remove(page.mesh);
+    page.mesh.position.x -= getLeftHingeX();
+    page.mesh.position.z -= pivotZ;
+    pivot.add(page.mesh);
+
+    this.activeFlip = { pivot, page, progress: 0 };
+  }
+
+  private advanceFlip(delta: number) {
+    const flip = this.activeFlip!;
+    flip.progress += delta / FLIP_DURATION;
+    const t = Math.min(flip.progress, 1);
+    const eased = t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
+    // Rotate around Y at the left hinge; the page folds toward +Z and over.
+    flip.pivot.rotation.y = -eased * Math.PI;
 
     if (t >= 1) {
       this.finishFlip();
     }
   }
 
-  private flipPagesAbove(clickedIndex: number) {
-    const pagesAbove = this.pages.slice(clickedIndex + 1);
-    if (pagesAbove.length === 0) return;
-
-    const pivotZ = (clickedIndex + 1) * THICKNESS;
-
-    const pivot = new THREE.Group();
-    pivot.position.set(getLeftHingeX(), 0, pivotZ);
-    this.group.add(pivot);
-
-    for (const page of pagesAbove) {
-      this.group.remove(page.mesh);
-      page.mesh.position.x -= getLeftHingeX();
-      page.mesh.position.z -= pivotZ;
-      pivot.add(page.mesh);
-    }
-
-    this.flipAnimation = { pivot, progress: 0, pagesToRemove: pagesAbove };
+  private finishFlip() {
+    const flip = this.activeFlip!;
+    flip.pivot.remove(flip.page.mesh);
+    this.group.remove(flip.pivot);
+    this.mounted = this.mounted.filter((page) => page !== flip.page);
+    flip.page.dispose();
+    this.activeFlip = null;
+    this.startNextFlip();
   }
 
-  private finishFlip() {
-    const { pivot, pagesToRemove } = this.flipAnimation!;
+  /** Makes the opened page the new root and mounts its children behind it. */
+  private descend() {
+    const child = this.pendingChild;
+    this.pendingChild = null;
+    if (!child) return;
 
-    for (const page of pagesToRemove) {
-      pivot.remove(page.mesh);
-      page.dispose();
-      const index = this.pages.indexOf(page);
-      if (index !== -1) {
-        this.pages.splice(index, 1);
-      }
+    // The opened page survived the flips; its former siblings are gone. Free any
+    // of their descendants that were created but never mounted.
+    for (let i = 0; i < this.orderedPortals.length - 1; i++) {
+      disposeDescendants(this.orderedPortals[i].child);
     }
 
-    this.group.remove(pivot);
-    this.flipAnimation = null;
+    this.currentNode = child;
+    this.orderedPortals = [...child.portals];
+
+    for (const portal of this.orderedPortals) {
+      this.group.add(portal.child.page.mesh);
+    }
+    this.mounted = this.stackNodes().map((node) => node.page);
+    this.relayout();
+  }
+}
+
+/** Disposes every page below a node, leaving the node's own page untouched. */
+function disposeDescendants(node: PageNode) {
+  for (const portal of node.portals) {
+    disposeDescendants(portal.child);
+    portal.child.page.dispose();
   }
 }

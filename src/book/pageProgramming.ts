@@ -3,20 +3,10 @@ import { Page, FRONT_FACE_Z, scaleHoleCoord, scaleHoleSize } from './page';
 
 export const PROGRAMMING_TRIANGLE = { cx: 0, cy: 0.2, size: 1.0 };
 
-function circleHole(cx: number, cy: number, radius: number): THREE.Path {
-  const [x, y] = scaleHoleCoord(cx, cy);
-  const hole = new THREE.Path();
-  hole.absarc(x, y, scaleHoleSize(radius), 0, Math.PI * 2, true);
-  return hole;
-}
-
-function buildProgrammingHoles(): THREE.Path[] {
-  return [
-    circleHole(-0.9, -0.8, 0.55),
-    circleHole(0.9, 0.3, 0.55),
-  ];
-}
-
+/**
+ * Triangular portal shape, matching the reflective triangle decoration so the
+ * cover's triangular hole reveals the logo exactly.
+ */
 export function programmingTrianglePath(
   cx = PROGRAMMING_TRIANGLE.cx,
   cy = PROGRAMMING_TRIANGLE.cy,
@@ -70,20 +60,19 @@ function createReflectiveTriangle(): THREE.Mesh {
 }
 
 export class PageProgramming extends Page {
-  private reflectiveTriangle: THREE.Mesh;
+  private reflectiveTriangle: THREE.Mesh | null = null;
 
   constructor() {
-    super(0x2a2a3e, 2, 'Programming', buildProgrammingHoles);
-
-    this.reflectiveTriangle = createReflectiveTriangle();
-    this.mesh.add(this.reflectiveTriangle);
+    super(0x2a2a3e, 'Programming');
+    this.rebuildDecorations();
   }
 
-  rebuildGeometry() {
-    super.rebuildGeometry();
-    this.mesh.remove(this.reflectiveTriangle);
-    this.reflectiveTriangle.geometry.dispose();
-    (this.reflectiveTriangle.material as THREE.Material).dispose();
+  protected rebuildDecorations() {
+    if (this.reflectiveTriangle) {
+      this.mesh.remove(this.reflectiveTriangle);
+      this.reflectiveTriangle.geometry.dispose();
+      (this.reflectiveTriangle.material as THREE.Material).dispose();
+    }
     this.reflectiveTriangle = createReflectiveTriangle();
     this.mesh.add(this.reflectiveTriangle);
   }
