@@ -11,8 +11,11 @@ import {
 } from './page';
 import { PageNode, Portal, createBookTree } from './bookTree';
 
-/** Seconds to flip a single page. */
-const FLIP_DURATION = 0.9;
+/** Duration of a single page turn animation (seconds). */
+export let PageTurnDuration = 1.2;
+
+/** Total time budget for turning all pages in one navigation (seconds). */
+export let TotalPageTurnDuration = 1.5;
 
 /** World-space direction toward the reader (camera on +Z, pages face +Z). */
 export const BOOK_FRONT_NORMAL = new THREE.Vector3(0, 0, 1);
@@ -29,7 +32,9 @@ export function perspectiveFovForPageBounds(): number {
 type Flip = {
   pivot: THREE.Group;
   page: Page;
-  progress: number;
+  elapsed: number;
+  startDelay: number;
+  finished: boolean;
 };
 
 /**
@@ -73,8 +78,7 @@ export class Book {
 
   private readonly frontIndicator: THREE.ArrowHelper;
 
-  private activeFlip: Flip | null = null;
-  private flipQueue: Page[] = [];
+  private activeFlips: Flip[] = [];
   private pendingChild: PageNode | null = null;
 
   private readonly raycaster = new THREE.Raycaster();
@@ -105,7 +109,7 @@ export class Book {
   }
 
   get isAnimating(): boolean {
-    return this.activeFlip !== null || this.flipQueue.length > 0;
+    return this.activeFlips.length > 0;
   }
 
   getWorldFocusPoint(target = new THREE.Vector3()): THREE.Vector3 {
@@ -153,8 +157,8 @@ export class Book {
     for (const page of this.mounted) {
       page.update(delta);
     }
-    if (this.activeFlip) {
-      this.advanceFlip(delta);
+    if (this.activeFlips.length > 0) {
+      this.advanceFlips(delta);
     }
   }
 
@@ -195,51 +199,65 @@ export class Book {
     const stack = this.stackNodes();
     const pagesInFront = stack.slice(0, -1).map((node) => node.page);
     this.pendingChild = target.child;
-    this.flipQueue = pagesInFront;
-    this.startNextFlip();
-  }
 
-  private startNextFlip() {
-    const page = this.flipQueue.shift();
-    if (!page) {
+    if (pagesInFront.length === 0) {
       this.descend();
       return;
     }
 
-    const pivotZ = page.mesh.position.z;
-    const pivot = new THREE.Group();
-    pivot.position.set(getLeftHingeX(), 0, pivotZ);
-    this.group.add(pivot);
+    const delayPerPage =
+      (TotalPageTurnDuration - PageTurnDuration) / pagesInFront.length;
 
-    this.group.remove(page.mesh);
-    page.mesh.position.x -= getLeftHingeX();
-    page.mesh.position.z -= pivotZ;
-    pivot.add(page.mesh);
+    this.activeFlips = pagesInFront.map((page, index) => {
+      const pivotZ = page.mesh.position.z;
+      const pivot = new THREE.Group();
+      pivot.position.set(getLeftHingeX(), 0, pivotZ);
+      this.group.add(pivot);
 
-    this.activeFlip = { pivot, page, progress: 0 };
+      this.group.remove(page.mesh);
+      page.mesh.position.x -= getLeftHingeX();
+      page.mesh.position.z -= pivotZ;
+      pivot.add(page.mesh);
+
+      return {
+        pivot,
+        page,
+        elapsed: 0,
+        startDelay: index * delayPerPage,
+        finished: false,
+      };
+    });
   }
 
-  private advanceFlip(delta: number) {
-    const flip = this.activeFlip!;
-    flip.progress += delta / FLIP_DURATION;
-    const t = Math.min(flip.progress, 1);
-    const eased = t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
-    // Rotate around Y at the left hinge; the page folds toward +Z and over.
-    flip.pivot.rotation.y = -eased * Math.PI;
+  private advanceFlips(delta: number) {
+    for (const flip of this.activeFlips) {
+      if (flip.finished) continue;
 
-    if (t >= 1) {
-      this.finishFlip();
+      flip.elapsed += delta;
+
+      if (flip.elapsed < flip.startDelay) continue;
+
+      const t = Math.min((flip.elapsed - flip.startDelay) / PageTurnDuration, 1);
+      const eased = t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
+      flip.pivot.rotation.y = -eased * Math.PI;
+
+      if (t >= 1) {
+        flip.finished = true;
+        this.cleanupFlip(flip);
+      }
+    }
+
+    if (this.activeFlips.every((flip) => flip.finished)) {
+      this.activeFlips = [];
+      this.descend();
     }
   }
 
-  private finishFlip() {
-    const flip = this.activeFlip!;
+  private cleanupFlip(flip: Flip) {
     flip.pivot.remove(flip.page.mesh);
     this.group.remove(flip.pivot);
     this.mounted = this.mounted.filter((page) => page !== flip.page);
     flip.page.dispose();
-    this.activeFlip = null;
-    this.startNextFlip();
   }
 
   /** Makes the opened page the new root and mounts its children behind it. */
