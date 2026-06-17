@@ -1,9 +1,4 @@
 import * as THREE from 'three';
-import { FontLoader } from 'three/examples/jsm/loaders/FontLoader.js';
-// Swap this import for any other typeface.json to change the cover font. Three.js
-// ships several under `three/examples/fonts`, and the `facetype.js` converter
-// (https://gero3.github.io/facetype.js/) turns any .ttf/.otf into this format.
-import titleFontUrl from 'three/examples/fonts/helvetiker_bold.typeface.json?url';
 import {
   Page,
   createPageShape,
@@ -11,6 +6,7 @@ import {
   getPageHeight,
   getPageWidth,
 } from './page';
+import { Hole, TextHole, mergeHoleGeometry } from './holes';
 
 const COVER_COLOR = 0xffef9f;
 const PAPER_TEXTURE_SIZE = 768;
@@ -27,80 +23,32 @@ const TEXT_LEFT_FACTOR = 0.06;
 const TEXT_TOP_FACTOR = 0.07;
 /** Blank space between the two lines, as a fraction of the title height. */
 const LINE_GAP_FACTOR = 0.55;
-/** Bezier sampling per glyph contour; higher is smoother but heavier. */
-const GLYPH_CURVE_DIVISIONS = 6;
-
-type TitleGeometry = {
-  /** Glyph outlines, punched as see-through holes in the page. */
-  holes: THREE.Path[];
-  /** Letter counters (insides of a, o, B, …), filled back in so text reads. */
-  counters: THREE.Shape[];
-};
-
-function contourToPath(points: THREE.Vector2[], dx: number, dy: number): THREE.Path {
-  const path = new THREE.Path();
-  points.forEach((p, i) =>
-    i === 0 ? path.moveTo(p.x + dx, p.y + dy) : path.lineTo(p.x + dx, p.y + dy),
-  );
-  path.closePath();
-  return path;
-}
-
-function contourToShape(points: THREE.Vector2[], dx: number, dy: number): THREE.Shape {
-  const shape = new THREE.Shape();
-  points.forEach((p, i) =>
-    i === 0 ? shape.moveTo(p.x + dx, p.y + dy) : shape.lineTo(p.x + dx, p.y + dy),
-  );
-  shape.closePath();
-  return shape;
-}
-
 /**
- * Lays one line of text out from a baseline at (originX, originY) and appends
- * its glyph outlines (as holes) and counters (as fill shapes) to `out`.
- *
- * `font.generateShapes` returns one {@link THREE.Shape} per glyph already
- * positioned along the baseline, with the letter counters stored as the shape's
- * own holes — exactly what we need to invert into see-through letters.
+ * The cover's punched-through title block, modelled as two {@link TextHole}
+ * objects (one per line). Each resolves its baseline lazily so the lettering
+ * tracks the current page size, exactly like the portal holes do.
  */
-function layoutLine(
-  font: any,
-  text: string,
-  size: number,
-  originX: number,
-  originY: number,
-  out: TitleGeometry,
-) {
-  const glyphs = font.generateShapes(text, size) as THREE.Shape[];
-  for (const glyph of glyphs) {
-    const { shape, holes } = glyph.extractPoints(GLYPH_CURVE_DIVISIONS);
-    out.holes.push(contourToPath(shape, originX, originY));
-    for (const counter of holes) {
-      out.counters.push(contourToShape(counter, originX, originY));
-    }
-  }
-}
+function buildTitleHoles(): Hole[] {
+  const leftX = () => -getPageWidth() / 2 + getPageWidth() * TEXT_LEFT_FACTOR;
+  const titleSize = () => getPageHeight() * TITLE_HEIGHT_FACTOR;
+  const subtitleSize = () => getPageHeight() * SUBTITLE_HEIGHT_FACTOR;
+  const topY = () => getPageHeight() / 2 - getPageHeight() * TEXT_TOP_FACTOR;
+  const titleBaseline = () => topY() - titleSize();
+  const subtitleBaseline = () =>
+    titleBaseline() - (titleSize() * LINE_GAP_FACTOR + subtitleSize());
 
-/** Builds the title/subtitle holes and counters for the current page size. */
-function buildTitleGeometry(font: any): TitleGeometry {
-  const out: TitleGeometry = { holes: [], counters: [] };
-  if (!font) return out;
-
-  const pageW = getPageWidth();
-  const pageH = getPageHeight();
-  const titleSize = pageH * TITLE_HEIGHT_FACTOR;
-  const subtitleSize = pageH * SUBTITLE_HEIGHT_FACTOR;
-
-  const leftX = -pageW / 2 + pageW * TEXT_LEFT_FACTOR;
-  const topY = pageH / 2 - pageH * TEXT_TOP_FACTOR;
-
-  const titleBaseline = topY - titleSize;
-  const subtitleBaseline = titleBaseline - (titleSize * LINE_GAP_FACTOR + subtitleSize);
-
-  layoutLine(font, TITLE_TEXT, titleSize, leftX, titleBaseline, out);
-  layoutLine(font, SUBTITLE_TEXT, subtitleSize, leftX, subtitleBaseline, out);
-
-  return out;
+  return [
+    new TextHole(TITLE_TEXT, () => ({
+      size: titleSize(),
+      baselineX: leftX(),
+      baselineY: titleBaseline(),
+    })),
+    new TextHole(SUBTITLE_TEXT, () => ({
+      size: subtitleSize(),
+      baselineX: leftX(),
+      baselineY: subtitleBaseline(),
+    })),
+  ];
 }
 
 function randomFromSeed(seed: number): number {
@@ -204,11 +152,8 @@ export class PageCover extends Page {
   private canvas: HTMLCanvasElement;
   private paperFace: THREE.Mesh | null = null;
 
-  private font: any = null;
-  /** Portal holes assigned by the book layout, kept so we can re-merge text. */
-  private portalHoles: THREE.Path[] = [];
-  /** Counters for the current title, filled back into the front face. */
-  private titleCounters: THREE.Shape[] = [];
+  /** The cover's own decorative title, as composable hole objects. */
+  private readonly titleHoles: Hole[] = buildTitleHoles();
 
   constructor() {
     super(COVER_COLOR, 'Cover');
@@ -217,23 +162,17 @@ export class PageCover extends Page {
     this.texture = new THREE.CanvasTexture(this.canvas);
     this.ctx = this.canvas.getContext('2d')!;
     this.rebuildDecorations();
-
-    new FontLoader().load(titleFontUrl, (font: any) => {
-      this.font = font;
-      // Re-run the layout now that glyphs are available.
-      this.setHoles(this.portalHoles);
-    });
   }
 
   /**
-   * Merges the title glyph holes into the portal holes the book assigns, so the
-   * cover is see-through both through its portals and through the lettering.
+   * Merges the cover's title holes into the portal holes the book assigns, so
+   * the cover is see-through both through its portals and through the lettering.
+   * Portal counters (e.g. the "Art" ring text's letter insides) and the title
+   * counters are kept so the front face can fill them back in.
    */
-  setHoles(holes: THREE.Path[]) {
-    this.portalHoles = holes;
-    const title = buildTitleGeometry(this.font);
-    this.titleCounters = title.counters;
-    super.setHoles([...holes, ...title.holes]);
+  setHoles(holes: THREE.Path[], counters: THREE.Shape[] = []) {
+    const title = mergeHoleGeometry(this.titleHoles.map((hole) => hole.build()));
+    super.setHoles([...holes, ...title.paths], [...counters, ...title.counters]);
   }
 
   private resizeTexture() {
@@ -252,7 +191,7 @@ export class PageCover extends Page {
     }
 
     this.resizeTexture();
-    this.paperFace = createPaperFrontFace(this.texture, this.holes, this.titleCounters);
+    this.paperFace = createPaperFrontFace(this.texture, this.holes, this.counters);
     this.mesh.add(this.paperFace);
   }
 }

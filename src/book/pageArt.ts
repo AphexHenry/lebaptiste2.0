@@ -9,16 +9,59 @@ import {
 
 const TEXTURE_SIZE = 512;
 
-const PASTEL_COLORS = [
-  '#f8bbd0',
-  '#b3e5fc',
-  '#c8e6c9',
-  '#fff9c4',
-  '#e1bee7',
-  '#ffccbc',
-  '#dcedc8',
-  '#f0f4c3',
+const BAND_COLORS = [
+  '#e91e63',
+  '#2196f3',
+  '#4caf50',
+  '#ffeb3b',
+  '#9c27b0',
+  '#ff5722',
+  '#00bcd4',
+  '#cddc39',
+  '#ff9800',
+  '#3f51b5',
+  '#f44336',
+  '#009688',
 ];
+
+function waveY(
+  x: number,
+  baseY: number,
+  phase: number,
+  verticalDrift: number,
+  amplitude: number,
+  frequency: number,
+): number {
+  return baseY + verticalDrift + Math.sin(x * frequency + phase) * amplitude;
+}
+
+function traceWaveEdge(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  baseY: number,
+  phase: number,
+  verticalDrift: number,
+  amplitude: number,
+  frequency: number,
+  forward: boolean,
+) {
+  const step = 3;
+  if (forward) {
+    for (let x = 0; x <= width; x += step) {
+      ctx.lineTo(x, waveY(x, baseY, phase, verticalDrift, amplitude, frequency));
+    }
+  } else {
+    for (let x = width; x >= 0; x -= step) {
+      ctx.lineTo(x, waveY(x, baseY, phase, verticalDrift, amplitude, frequency));
+    }
+  }
+}
+
+function bandParams(index: number, time: number) {
+  const phase = time * 1.2 + index * 0.7;
+  const verticalDrift = Math.sin(time * 0.9 + index * 0.4) * 18;
+  return { phase, verticalDrift };
+}
 
 function drawWavyTexture(
   ctx: CanvasRenderingContext2D,
@@ -26,32 +69,37 @@ function drawWavyTexture(
   height: number,
   time: number,
 ) {
-  ctx.fillStyle = '#faf3e8';
-  ctx.fillRect(0, 0, width, height);
-
-  const lineSpacing = 28;
-  const amplitude = 14;
+  const bandSpacing = 30;
+  const amplitude = 16;
   const frequency = 0.018;
+  const bandCount = Math.ceil((height + bandSpacing * 2) / bandSpacing);
 
-  for (let i = 0; i * lineSpacing < height + lineSpacing; i++) {
-    const baseY = i * lineSpacing;
-    const color = PASTEL_COLORS[i % PASTEL_COLORS.length];
-    const phase = time * 1.2 + i * 0.7;
-    const verticalDrift = Math.sin(time * 0.9 + i * 0.4) * 18;
+  for (let i = 0; i < bandCount; i++) {
+    const topY = i * bandSpacing;
+    const bottomY = (i + 1) * bandSpacing;
+    const top = bandParams(i, time);
+    const bottom = bandParams(i + 1, time);
+    const color = BAND_COLORS[i % BAND_COLORS.length];
 
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 4;
-    ctx.lineCap = 'round';
     ctx.beginPath();
-
-    for (let x = 0; x <= width; x += 3) {
-      const waveY =
-        baseY + verticalDrift + Math.sin(x * frequency + phase) * amplitude;
-      if (x === 0) ctx.moveTo(x, waveY);
-      else ctx.lineTo(x, waveY);
-    }
-
-    ctx.stroke();
+    ctx.moveTo(
+      0,
+      waveY(0, topY, top.phase, top.verticalDrift, amplitude, frequency),
+    );
+    traceWaveEdge(ctx, width, topY, top.phase, top.verticalDrift, amplitude, frequency, true);
+    traceWaveEdge(
+      ctx,
+      width,
+      bottomY,
+      bottom.phase,
+      bottom.verticalDrift,
+      amplitude,
+      frequency,
+      false,
+    );
+    ctx.closePath();
+    ctx.fillStyle = color;
+    ctx.fill();
   }
 }
 

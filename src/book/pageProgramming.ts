@@ -1,27 +1,9 @@
 import * as THREE from 'three';
 import { Page, FRONT_FACE_Z, scaleHoleCoord, scaleHoleSize } from './page';
 
+// Shared with the Art/About portals via bookTree so the reflective triangle and
+// the cover's triangular hole stay perfectly aligned.
 export const PROGRAMMING_TRIANGLE = { cx: 0, cy: 0.2, size: 1.0 };
-
-/**
- * Triangular portal shape, matching the reflective triangle decoration so the
- * cover's triangular hole reveals the logo exactly.
- */
-export function programmingTrianglePath(
-  cx = PROGRAMMING_TRIANGLE.cx,
-  cy = PROGRAMMING_TRIANGLE.cy,
-  size = PROGRAMMING_TRIANGLE.size,
-): THREE.Path {
-  const [x, y] = scaleHoleCoord(cx, cy);
-  const scaled = scaleHoleSize(size);
-  const height = (scaled * Math.sqrt(3)) / 2;
-  const hole = new THREE.Path();
-  hole.moveTo(x, y + height / 2);
-  hole.lineTo(x - scaled / 2, y - height / 2);
-  hole.lineTo(x + scaled / 2, y - height / 2);
-  hole.closePath();
-  return hole;
-}
 
 function createTriangleShape(
   cx = PROGRAMMING_TRIANGLE.cx,

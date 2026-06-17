@@ -10,6 +10,8 @@ import {
   setPageViewportAspect,
 } from './page';
 import { PageNode, Portal, createBookTree } from './bookTree';
+import { mergeHoleGeometry } from './holes';
+import { onFontReady } from './font';
 
 /** Duration of a single page turn animation (seconds). */
 export let PageTurnDuration = 1.2;
@@ -102,6 +104,9 @@ export class Book {
     }
     this.mounted = this.stackNodes().map((node) => node.page);
     this.relayout();
+
+    // Text holes only have geometry once the font loads; redo the layout then.
+    onFontReady(() => this.relayout());
   }
 
   get centerZ(): number {
@@ -172,11 +177,14 @@ export class Book {
    * the current node and child ordering.
    */
   private relayout() {
-    this.currentNode.page.setHoles(this.orderedPortals.map((p) => p.shape()));
+    const front = mergeHoleGeometry(this.orderedPortals.map((p) => p.hole.build()));
+    this.currentNode.page.setHoles(front.paths, front.counters);
 
     this.orderedPortals.forEach((portal, index) => {
-      const holesBehind = this.orderedPortals.slice(index + 1).map((p) => p.shape());
-      portal.child.page.setHoles(holesBehind);
+      const behind = mergeHoleGeometry(
+        this.orderedPortals.slice(index + 1).map((p) => p.hole.build()),
+      );
+      portal.child.page.setHoles(behind.paths, behind.counters);
     });
 
     const nodes = this.stackNodes();

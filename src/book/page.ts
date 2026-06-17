@@ -92,6 +92,8 @@ export class Page {
   readonly name: string;
   /** See-through holes currently punched in this page (set by the book layout). */
   protected holes: THREE.Path[] = [];
+  /** Solid islands filled back into the holes (e.g. letter counters). */
+  protected counters: THREE.Shape[] = [];
 
   constructor(color: number, name: string) {
     this.name = name;
@@ -104,9 +106,16 @@ export class Page {
     this.mesh.userData.page = this;
   }
 
-  /** Replace the see-through holes punched in this page and rebuild it. */
-  setHoles(holes: THREE.Path[]) {
+  /**
+   * Replace the see-through holes punched in this page and rebuild it.
+   *
+   * `counters` are solid islands filled back inside those holes (e.g. the
+   * insides of letters). The base page only cuts the holes; subclasses that draw
+   * a decorated front face are responsible for rendering the counters.
+   */
+  setHoles(holes: THREE.Path[], counters: THREE.Shape[] = []) {
     this.holes = holes;
+    this.counters = counters;
     this.rebuildGeometry();
   }
 
