@@ -227,7 +227,7 @@ export class CircularTextHole extends Hole {
     super();
     this.gap = options.gap ?? 0.12;
     this.centerAngle = options.centerAngle ?? Math.PI / 2;
-    this.arcSpan = options.arcSpan ?? Math.PI * 0.6;
+    this.arcSpan = options.arcSpan ?? Math.PI * 0.3;
   }
 
   build(): HoleGeometry {
