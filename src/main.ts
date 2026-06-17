@@ -2,7 +2,11 @@ import './style.css';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { Book, BOOK_FRONT_NORMAL, BOOK_CAMERA_DISTANCE, perspectiveFovForPageBounds } from './book/Book';
+import { Book, BOOK_FRONT_NORMAL, BOOK_CAMERA_DISTANCE } from './book/Book';
+import { getPageHeight } from './book/page';
+
+/** Pull camera back along the view axis; FOV is narrowed to keep the same framing. */
+const CAMERA_PULLBACK = 2;
 import { addDebugTools, addLightDebugTools } from './debugTools';
 
 function bootstrap() {
@@ -54,7 +58,7 @@ function bootstrap() {
   book.addToScene(scene);
   const focus = book.getWorldFocusPoint();
   controls.target.copy(focus);
-  camera.position.copy(focus).addScaledVector(BOOK_FRONT_NORMAL, BOOK_CAMERA_DISTANCE);
+  camera.position.copy(focus).addScaledVector(BOOK_FRONT_NORMAL, BOOK_CAMERA_DISTANCE * CAMERA_PULLBACK);
   controls.update();
 
   // On +Z side, shining toward the cover front.
@@ -81,8 +85,12 @@ function bootstrap() {
   function updateCameraFrustum() {
     const aspect = window.innerWidth / window.innerHeight;
     book.setViewportAspect(aspect);
+    const distance = BOOK_CAMERA_DISTANCE * CAMERA_PULLBACK;
+    const halfHeight = getPageHeight() / 2;
+    const focus = book.getWorldFocusPoint();
+    camera.position.copy(focus).addScaledVector(BOOK_FRONT_NORMAL, distance);
     camera.aspect = aspect;
-    camera.fov = perspectiveFovForPageBounds();
+    camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(halfHeight / distance));
     camera.updateProjectionMatrix();
   }
 
