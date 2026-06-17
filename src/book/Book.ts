@@ -78,7 +78,7 @@ export class Book {
   /** Pages currently in the scene graph, used for animation and picking. */
   private mounted: Page[] = [];
 
-  private readonly frontIndicator: THREE.ArrowHelper;
+  // private readonly frontIndicator: THREE.ArrowHelper;
 
   private activeFlips: Flip[] = [];
   private pendingChild: PageNode | null = null;
@@ -91,13 +91,13 @@ export class Book {
     this.currentNode = this.root;
     this.orderedPortals = [...this.root.portals];
 
-    this.frontIndicator = new THREE.ArrowHelper(
-      PAGE_FRONT_NORMAL.clone(),
-      new THREE.Vector3(),
-      1.2,
-      0x3fd48d,
-    );
-    this.group.add(this.frontIndicator);
+    // this.frontIndicator = new THREE.ArrowHelper(
+    //   PAGE_FRONT_NORMAL.clone(),
+    //   new THREE.Vector3(),
+    //   1.2,
+    //   0x3fd48d,
+    // );
+    // this.group.add(this.frontIndicator);
 
     for (const node of this.stackNodes()) {
       this.group.add(node.page.mesh);
@@ -191,7 +191,7 @@ export class Book {
     const frontZ = (nodes.length - 1) * THICKNESS;
     nodes.forEach((node, index) => node.page.setDepth(frontZ - index * THICKNESS));
 
-    this.frontIndicator.position.set(0, 0, frontZ + FRONT_FACE_Z);
+    // this.frontIndicator.position.set(0, 0, frontZ + FRONT_FACE_Z);
   }
 
   /**

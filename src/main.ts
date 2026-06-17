@@ -1,7 +1,6 @@
 import './style.css';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { Book, BOOK_FRONT_NORMAL, BOOK_CAMERA_DISTANCE } from './book/Book';
 import { getPageHeight } from './book/page';
 
