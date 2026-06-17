@@ -1,5 +1,5 @@
 import { Page } from './page';
-import { Hole, CircleHole, TriangleHole, CircularTextHole, CompositeHole } from './holes';
+import { Hole, TextCircleHole, TriangleHole } from './holes';
 import { PageCover } from './pageCover';
 import { PageArt } from './pageArt';
 import { PageAboutMe } from './pageAboutMe';
@@ -43,20 +43,15 @@ const ABOUT_CIRCLE = { cx: 0.9, cy: 0.3, radius: 0.55 };
 
 /** Builds the page tree for the book. Add nested portals to grow it. */
 export function createBookTree(): PageNode {
-  const artHole = new CompositeHole(
-    new CircleHole(ART_CIRCLE.cx, ART_CIRCLE.cy, ART_CIRCLE.radius),
-    new CircularTextHole('Art', {
-      cx: ART_CIRCLE.cx,
-      cy: ART_CIRCLE.cy,
-      radius: ART_CIRCLE.radius,
-      fontSize: 0.22,
-      gap: 0.1,
-    }),
-  );
-
   return node(new PageCover(), [
-    portal(artHole, node(new PageArt())),
-    portal(new CircleHole(ABOUT_CIRCLE.cx, ABOUT_CIRCLE.cy, ABOUT_CIRCLE.radius), node(new PageAboutMe())),
+    portal(
+      new TextCircleHole('Art', { ...ART_CIRCLE, fontSize: 0.22, gap: 0.1 }),
+      node(new PageArt()),
+    ),
+    portal(
+      new TextCircleHole('About Me', { ...ABOUT_CIRCLE, fontSize: 0.18, gap: 0.1, arcSpan: Math.PI * 0.55 }),
+      node(new PageAboutMe()),
+    ),
     portal(
       new TriangleHole(PROGRAMMING_TRIANGLE.cx, PROGRAMMING_TRIANGLE.cy, PROGRAMMING_TRIANGLE.size),
       node(new PageProgramming()),

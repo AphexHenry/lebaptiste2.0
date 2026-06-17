@@ -269,6 +269,50 @@ export class CircularTextHole extends Hole {
   }
 }
 
+export interface TextCircleOptions {
+  /** Circle centre and radius, in reference (hole) coordinates. */
+  cx: number;
+  cy: number;
+  radius: number;
+  /** Cap height of the ring lettering, in reference units. */
+  fontSize?: number;
+  /** Gap between the circle edge and the text baseline, in reference units. */
+  gap?: number;
+  /** Angle (radians) the middle of the label sits at; defaults to the top. */
+  centerAngle?: number;
+  /** Total angle (radians) the label spans around the circle. */
+  arcSpan?: number;
+}
+
+/**
+ * Circular portal with a name bent around its outside — the common pattern for
+ * section links on the cover.
+ */
+export class TextCircleHole extends Hole {
+  constructor(
+    private readonly name: string,
+    private readonly options: TextCircleOptions,
+  ) {
+    super();
+  }
+
+  build(): HoleGeometry {
+    const { cx, cy, radius, fontSize = 0.22, gap, centerAngle, arcSpan } = this.options;
+    return mergeHoleGeometry([
+      new CircleHole(cx, cy, radius).build(),
+      new CircularTextHole(this.name, {
+        cx,
+        cy,
+        radius,
+        fontSize,
+        gap,
+        centerAngle,
+        arcSpan,
+      }).build(),
+    ]);
+  }
+}
+
 /** Combines several holes into one, e.g. a circle wrapped in ring text. */
 export class CompositeHole extends Hole {
   private readonly holes: Hole[];
