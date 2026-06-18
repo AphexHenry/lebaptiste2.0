@@ -14,7 +14,7 @@ import { mergeHoleGeometry } from './holes';
 import { onFontReady } from './font';
 
 /** Duration of a single page turn animation (seconds). */
-export let PageTurnDuration = 1.2;
+export let PageTurnDuration = 1.5;
 
 /** Total time budget for turning all pages in one navigation (seconds). */
 export let TotalPageTurnDuration = 1.5;

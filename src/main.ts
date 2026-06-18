@@ -24,7 +24,7 @@ function bootstrap() {
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMapping = THREE.NoToneMapping;
   renderer.toneMappingExposure = 1;
 
   // const pmrem = new THREE.PMREMGenerator(renderer);
@@ -36,10 +36,10 @@ function bootstrap() {
   const controls = new OrbitControls(camera, canvas);
   controls.enableDamping = true;
 
-  const ambient = new THREE.AmbientLight(0xffffff, 0.85);
+  const ambient = new THREE.AmbientLight(0xffffff, 0.4);
   scene.add(ambient);
 
-  const light = new THREE.DirectionalLight(0xfff5e0, 2);
+  const light = new THREE.DirectionalLight(0xfff5e0, 1.0);
   light.castShadow = true;
   light.shadow.mapSize.set(2048, 2048);
   light.shadow.bias = -0.0005;

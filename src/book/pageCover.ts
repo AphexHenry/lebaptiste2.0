@@ -7,9 +7,14 @@ import {
   getPageWidth,
 } from './page';
 import { Hole, TextHole, mergeHoleGeometry } from './holes';
+import paperTextureUrl from '../../assets/paperTexture.jpg';
 
-const COVER_COLOR = 0xffef9f;
+const COVER_COLOR = 0xdccfc2;
 const PAPER_TEXTURE_SIZE = 768;
+const COVER_TOP_LEFT_COLOR = '#FF6436';
+const COVER_BOTTOM_RIGHT_COLOR = '#B59BC8';
+const GRAIN_OPACITY = 0.55;
+const GRAIN_TILE_SIZE = 384;
 
 /** Title shown punched through the cover, top-left. */
 const TITLE_TEXT = 'Baptiste Bohelay';
@@ -51,62 +56,50 @@ function buildTitleHoles(): Hole[] {
   ];
 }
 
-function randomFromSeed(seed: number): number {
-  const value = Math.sin(seed * 12.9898) * 43758.5453;
-  return value - Math.floor(value);
-}
-
-function drawPaperTexture(ctx: CanvasRenderingContext2D, width: number, height: number) {
-  const base = ctx.createLinearGradient(0, 0, width, height);
-  base.addColorStop(0, '#fff7c8');
-  base.addColorStop(0.5, '#ffe98e');
-  base.addColorStop(1, '#ffd86a');
-  ctx.fillStyle = base;
+function drawCoverBase(ctx: CanvasRenderingContext2D, width: number, height: number) {
+  ctx.fillStyle = COVER_TOP_LEFT_COLOR;
   ctx.fillRect(0, 0, width, height);
 
-  const imageData = ctx.getImageData(0, 0, width, height);
-  const { data } = imageData;
+  ctx.beginPath();
+  ctx.moveTo(width, 0);
+  ctx.lineTo(width, height);
+  ctx.lineTo(0, height);
+  ctx.closePath();
+  ctx.fillStyle = COVER_BOTTOM_RIGHT_COLOR;
+  ctx.fill();
+}
 
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const offset = (y * width + x) * 4;
-      const fineGrain = randomFromSeed(x * 31 + y * 17);
-      const broadGrain = randomFromSeed(Math.floor(x / 9) * 19 + Math.floor(y / 9) * 23);
-      const grain = (fineGrain - 0.5) * 18 + (broadGrain - 0.5) * 18;
+function drawTiledGrain(
+  ctx: CanvasRenderingContext2D,
+  image: HTMLImageElement,
+  width: number,
+  height: number,
+) {
+  const tileAspect = image.naturalWidth / image.naturalHeight;
+  const tileWidth = GRAIN_TILE_SIZE * tileAspect;
+  const tileHeight = GRAIN_TILE_SIZE;
 
-      data[offset] = THREE.MathUtils.clamp(data[offset] + grain, 0, 255);
-      data[offset + 1] = THREE.MathUtils.clamp(data[offset + 1] + grain, 0, 255);
-      data[offset + 2] = THREE.MathUtils.clamp(data[offset + 2] + grain * 0.6, 0, 255);
+  for (let y = 0; y < height; y += tileHeight) {
+    for (let x = 0; x < width; x += tileWidth) {
+      ctx.drawImage(image, x, y, tileWidth, tileHeight);
     }
   }
+}
 
-  ctx.putImageData(imageData, 0, 0);
+function drawPaperTexture(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  grainImage: HTMLImageElement | null,
+) {
+  drawCoverBase(ctx, width, height);
+  if (!grainImage) return;
 
-  ctx.globalAlpha = 0.18;
-  ctx.strokeStyle = '#fffbe2';
-  ctx.lineWidth = 1;
-  for (let i = 0; i < 180; i++) {
-    const x = randomFromSeed(i * 41) * width;
-    const y = randomFromSeed(i * 67) * height;
-    const length = 18 + randomFromSeed(i * 89) * 90;
-    const angle = -0.25 + randomFromSeed(i * 101) * 0.5;
-
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.lineTo(x + Math.cos(angle) * length, y + Math.sin(angle) * length);
-    ctx.stroke();
-  }
-
-  ctx.globalAlpha = 0.12;
-  ctx.fillStyle = '#b86f23';
-  for (let i = 0; i < 80; i++) {
-    const radius = 1 + randomFromSeed(i * 137) * 2.5;
-    ctx.beginPath();
-    ctx.arc(randomFromSeed(i * 149) * width, randomFromSeed(i * 163) * height, radius, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  ctx.globalAlpha = 1;
+  ctx.save();
+  ctx.globalAlpha = GRAIN_OPACITY;
+  ctx.globalCompositeOperation = 'multiply';
+  drawTiledGrain(ctx, grainImage, width, height);
+  ctx.restore();
 }
 
 function createPaperFrontFace(
@@ -130,9 +123,8 @@ function createPaperFrontFace(
   }
   uv.needsUpdate = true;
 
-  const material = new THREE.MeshStandardMaterial({
+  const material = new THREE.MeshBasicMaterial({
     map: texture,
-    roughness: 0.92,
     polygonOffset: true,
     polygonOffsetFactor: -2,
     polygonOffsetUnits: -2,
@@ -140,8 +132,6 @@ function createPaperFrontFace(
 
   const face = new THREE.Mesh(geometry, material);
   face.position.z = FRONT_FACE_Z + 0.005;
-  face.castShadow = true;
-  face.receiveShadow = true;
   face.name = 'paperCoverFace';
   return face;
 }
@@ -150,6 +140,7 @@ export class PageCover extends Page {
   private readonly texture: THREE.CanvasTexture;
   private readonly ctx: CanvasRenderingContext2D;
   private canvas: HTMLCanvasElement;
+  private grainImage: HTMLImageElement | null = null;
   private paperFace: THREE.Mesh | null = null;
 
   /** The cover's own decorative title, as composable hole objects. */
@@ -162,6 +153,7 @@ export class PageCover extends Page {
     this.texture = new THREE.CanvasTexture(this.canvas);
     this.ctx = this.canvas.getContext('2d')!;
     this.rebuildDecorations();
+    this.loadPaperGrain();
   }
 
   /**
@@ -179,15 +171,29 @@ export class PageCover extends Page {
     const aspect = getPageWidth() / getPageHeight();
     this.canvas.width = Math.round(PAPER_TEXTURE_SIZE * aspect);
     this.canvas.height = PAPER_TEXTURE_SIZE;
-    drawPaperTexture(this.ctx, this.canvas.width, this.canvas.height);
+    drawPaperTexture(this.ctx, this.canvas.width, this.canvas.height, this.grainImage);
     this.texture.needsUpdate = true;
+  }
+
+  private loadPaperGrain() {
+    const image = new Image();
+    image.onload = () => {
+      this.grainImage = image;
+      this.rebuildDecorations();
+    };
+    image.onerror = (error) => {
+      console.error('Failed to load cover paper texture:', error);
+    };
+    image.src = paperTextureUrl;
   }
 
   protected rebuildDecorations() {
     if (this.paperFace) {
       this.mesh.remove(this.paperFace);
       this.paperFace.geometry.dispose();
-      (this.paperFace.material as THREE.Material).dispose();
+      const material = this.paperFace.material as THREE.MeshBasicMaterial;
+      material.map = null;
+      material.dispose();
     }
 
     this.resizeTexture();
