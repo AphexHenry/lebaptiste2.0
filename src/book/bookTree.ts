@@ -53,7 +53,12 @@ export function createBookTree(): PageNode {
       node(new PageAboutMe()),
     ),
     portal(
-      new TriangleHole(PROGRAMMING_TRIANGLE.cx, PROGRAMMING_TRIANGLE.cy, PROGRAMMING_TRIANGLE.size),
+      new TriangleHole(
+        PROGRAMMING_TRIANGLE.cx,
+        PROGRAMMING_TRIANGLE.cy,
+        PROGRAMMING_TRIANGLE.size,
+        PROGRAMMING_TRIANGLE.rotation,
+      ),
       node(new PageProgramming()),
     ),
   ]);

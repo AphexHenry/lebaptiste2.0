@@ -116,25 +116,51 @@ export class CircleHole extends Hole {
   }
 }
 
-/** Equilateral triangle, apex pointing up. */
+type TriangleTracer = {
+  moveTo(x: number, y: number): void;
+  lineTo(x: number, y: number): void;
+  closePath(): void;
+};
+
+/** Equilateral triangle traced around (cx, cy); rotation is radians around the centre. */
+export function traceEquilateralTriangle(
+  tracer: TriangleTracer,
+  cx: number,
+  cy: number,
+  size: number,
+  rotation = 0,
+): void {
+  const [x, y] = scaleHoleCoord(cx, cy);
+  const scaled = scaleHoleSize(size);
+  const height = (scaled * Math.sqrt(3)) / 2;
+  const cos = Math.cos(rotation);
+  const sin = Math.sin(rotation);
+  const vertices: [number, number][] = [
+    [0, height / 2],
+    [-scaled / 2, -height / 2],
+    [scaled / 2, -height / 2],
+  ].map(([dx, dy]) => [x + cos * dx - sin * dy, y + sin * dx + cos * dy]);
+
+  tracer.moveTo(vertices[0][0], vertices[0][1]);
+  tracer.lineTo(vertices[1][0], vertices[1][1]);
+  tracer.lineTo(vertices[2][0], vertices[2][1]);
+  tracer.closePath();
+}
+
+/** Equilateral triangle, apex pointing up when rotation is 0. */
 export class TriangleHole extends Hole {
   constructor(
     private readonly cx: number,
     private readonly cy: number,
     private readonly size: number,
+    private readonly rotation = 0,
   ) {
     super();
   }
 
   build(): HoleGeometry {
-    const [x, y] = scaleHoleCoord(this.cx, this.cy);
-    const scaled = scaleHoleSize(this.size);
-    const height = (scaled * Math.sqrt(3)) / 2;
     const path = new THREE.Path();
-    path.moveTo(x, y + height / 2);
-    path.lineTo(x - scaled / 2, y - height / 2);
-    path.lineTo(x + scaled / 2, y - height / 2);
-    path.closePath();
+    traceEquilateralTriangle(path, this.cx, this.cy, this.size, this.rotation);
     return { paths: [path], counters: [] };
   }
 }
