@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import {
   Page,
-  createPageShape,
-  FRONT_FACE_Z,
+  configureBitmapTexture,
+  createTexturedFrontFace,
   getPageHeight,
   getPageWidth,
 } from './page';
@@ -12,7 +12,7 @@ import paperTextureUrl from '../../assets/paperTexture.jpg';
 const COVER_COLOR = 0xdccfc2;
 const PAPER_TEXTURE_SIZE = 768;
 const COVER_TOP_LEFT_COLOR = '#FCEAD7';
-const COVER_BOTTOM_RIGHT_COLOR = '#B59BC8';
+const COVER_BOTTOM_RIGHT_COLOR = '#D5C5DC';
 const GRAIN_OPACITY = 0.55;
 const GRAIN_TILE_SIZE = 384;
 
@@ -102,40 +102,6 @@ function drawPaperTexture(
   ctx.restore();
 }
 
-function createPaperFrontFace(
-  texture: THREE.CanvasTexture,
-  holes: THREE.Path[],
-  counters: THREE.Shape[],
-): THREE.Mesh {
-  // The page shape carries the glyph outlines as holes; the counters are added
-  // as extra solid islands so letters like a/o/B keep their insides.
-  const geometry = new THREE.ShapeGeometry([createPageShape(holes), ...counters]);
-  const buffer = geometry as unknown as THREE.BufferGeometry;
-  const uv = buffer.attributes.uv;
-  const pos = buffer.attributes.position;
-  const halfW = getPageWidth() / 2;
-  const halfH = getPageHeight() / 2;
-
-  for (let i = 0; i < uv.count; i++) {
-    const x = pos.getX(i);
-    const y = pos.getY(i);
-    uv.setXY(i, (x + halfW) / getPageWidth(), (y + halfH) / getPageHeight());
-  }
-  uv.needsUpdate = true;
-
-  const material = new THREE.MeshBasicMaterial({
-    map: texture,
-    polygonOffset: true,
-    polygonOffsetFactor: -2,
-    polygonOffsetUnits: -2,
-  });
-
-  const face = new THREE.Mesh(geometry, material);
-  face.position.z = FRONT_FACE_Z + 0.005;
-  face.name = 'paperCoverFace';
-  return face;
-}
-
 export class PageCover extends Page {
   private readonly texture: THREE.CanvasTexture;
   private readonly ctx: CanvasRenderingContext2D;
@@ -150,7 +116,7 @@ export class PageCover extends Page {
     super(COVER_COLOR, 'Cover');
 
     this.canvas = document.createElement('canvas');
-    this.texture = new THREE.CanvasTexture(this.canvas);
+    this.texture = configureBitmapTexture(new THREE.CanvasTexture(this.canvas));
     this.ctx = this.canvas.getContext('2d')!;
     this.rebuildDecorations();
     this.loadPaperGrain();
@@ -197,7 +163,8 @@ export class PageCover extends Page {
     }
 
     this.resizeTexture();
-    this.paperFace = createPaperFrontFace(this.texture, this.holes, this.counters);
+    this.paperFace = createTexturedFrontFace(this.texture, this.holes, this.counters);
+    this.paperFace.name = 'paperCoverFace';
     this.mesh.add(this.paperFace);
   }
 }

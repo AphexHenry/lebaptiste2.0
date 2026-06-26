@@ -1,10 +1,8 @@
 import * as THREE from 'three';
 import {
   Page,
-  createPageShape,
+  createTexturedFrontFace,
   FRONT_FACE_Z,
-  getPageWidth,
-  getPageHeight,
 } from './page';
 import { traceEquilateralTriangle } from './holes';
 import backgroundUrl from '../../assets/backgroundGreenAquarel.jpg';
@@ -30,38 +28,7 @@ function createTriangleShape(
   return shape;
 }
 
-function createTexturedFrontFace(
-  texture: THREE.Texture,
-  holes: THREE.Path[],
-): THREE.Mesh {
-  const geometry = new THREE.ShapeGeometry(createPageShape(holes));
-  const buffer = geometry as unknown as THREE.BufferGeometry;
-  const uv = buffer.attributes.uv;
-  const pos = buffer.attributes.position;
-  const halfW = getPageWidth() / 2;
-  const halfH = getPageHeight() / 2;
-
-  for (let i = 0; i < uv.count; i++) {
-    const x = pos.getX(i);
-    const y = pos.getY(i);
-    uv.setXY(i, (x + halfW) / getPageWidth(), (y + halfH) / getPageHeight());
-  }
-  uv.needsUpdate = true;
-
-  const material = new THREE.MeshBasicMaterial({
-    map: texture,
-    polygonOffset: true,
-    polygonOffsetFactor: -2,
-    polygonOffsetUnits: -2,
-  });
-
-  const face = new THREE.Mesh(geometry, material);
-  face.position.z = FRONT_FACE_Z + 0.005;
-  face.name = 'texturedFrontFace';
-  return face;
-}
-
-function createReflectiveTriangle(): THREE.Mesh {
+export function createReflectiveTriangle(): THREE.Mesh {
   const geometry = new THREE.ShapeGeometry(createTriangleShape());
   const material = new THREE.MeshPhysicalMaterial({
     color: 0xffffff,

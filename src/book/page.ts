@@ -87,6 +87,53 @@ export function createPageGeometry(holes: THREE.Path[] = []) {
   return geometry;
 }
 
+/** JPG/PNG/canvas bitmaps are sRGB; without this Three treats them as linear and they render too bright. */
+export function configureBitmapTexture<T extends THREE.Texture>(texture: T): T {
+  (texture as unknown as { colorSpace: string }).colorSpace = 'srgb';
+  return texture;
+}
+
+/**
+ * Unlit front face that shows a bitmap at the same brightness as the source file.
+ * Scene lights do not affect this mesh.
+ */
+export function createTexturedFrontFace(
+  texture: THREE.Texture,
+  holes: THREE.Path[],
+  counters: THREE.Shape[] = [],
+): THREE.Mesh {
+  configureBitmapTexture(texture);
+
+  const shapeInput =
+    counters.length > 0 ? [createPageShape(holes), ...counters] : createPageShape(holes);
+  const geometry = new THREE.ShapeGeometry(shapeInput);
+  const buffer = geometry as unknown as THREE.BufferGeometry;
+  const uv = buffer.attributes.uv;
+  const pos = buffer.attributes.position;
+  const halfW = getPageWidth() / 2;
+  const halfH = getPageHeight() / 2;
+
+  for (let i = 0; i < uv.count; i++) {
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    uv.setXY(i, (x + halfW) / getPageWidth(), (y + halfH) / getPageHeight());
+  }
+  uv.needsUpdate = true;
+
+  const material = new THREE.MeshBasicMaterial({
+    map: texture,
+    toneMapped: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+    polygonOffsetUnits: -2,
+  });
+
+  const face = new THREE.Mesh(geometry, material);
+  face.position.z = FRONT_FACE_Z + 0.005;
+  face.name = 'texturedFrontFace';
+  return face;
+}
+
 export class Page {
   readonly mesh: THREE.Mesh;
   readonly name: string;

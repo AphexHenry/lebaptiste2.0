@@ -24,6 +24,7 @@ function bootstrap() {
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  (renderer as THREE.WebGLRenderer & { outputColorSpace: string }).outputColorSpace = 'srgb';
   renderer.toneMapping = THREE.NoToneMapping;
   renderer.toneMappingExposure = 1;
 
@@ -36,10 +37,10 @@ function bootstrap() {
   const controls = new OrbitControls(camera, canvas);
   controls.enableDamping = true;
 
-  const ambient = new THREE.AmbientLight(0xffffff, 0.4);
+  const ambient = new THREE.AmbientLight(0xffffff, 0.12);
   scene.add(ambient);
 
-  const light = new THREE.DirectionalLight(0xfff5e0, 1.0);
+  const light = new THREE.DirectionalLight(0xffffff, 0.55);
   light.castShadow = true;
   light.shadow.mapSize.set(2048, 2048);
   light.shadow.bias = -0.0005;
