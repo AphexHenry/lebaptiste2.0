@@ -42,6 +42,11 @@ export function mergeHoleGeometry(parts: HoleGeometry[]): HoleGeometry {
  */
 export abstract class Hole {
   abstract build(): HoleGeometry;
+
+  /** Centre in reference (pre-viewport-scale) page coordinates. */
+  referenceCenter(): [number, number] {
+    return [0, 0];
+  }
 }
 
 /** Bezier sampling per glyph contour; higher is smoother but heavier. */
@@ -114,6 +119,10 @@ export class CircleHole extends Hole {
     path.absarc(x, y, scaleHoleSize(this.radius), 0, Math.PI * 2, true);
     return { paths: [path], counters: [] };
   }
+
+  referenceCenter(): [number, number] {
+    return [this.cx, this.cy];
+  }
 }
 
 type TriangleTracer = {
@@ -163,6 +172,10 @@ export class TriangleHole extends Hole {
     traceEquilateralTriangle(path, this.cx, this.cy, this.size, this.rotation);
     return { paths: [path], counters: [] };
   }
+
+  referenceCenter(): [number, number] {
+    return [this.cx, this.cy];
+  }
 }
 
 export class SquareHole extends Hole {
@@ -184,6 +197,10 @@ export class SquareHole extends Hole {
     path.lineTo(x + half, y - half);
     path.closePath();
     return { paths: [path], counters: [] };
+  }
+
+  referenceCenter(): [number, number] {
+    return [this.cx, this.cy];
   }
 }
 
@@ -337,6 +354,10 @@ export class TextCircleHole extends Hole {
       }).build(),
     ]);
   }
+
+  referenceCenter(): [number, number] {
+    return [this.options.cx, this.options.cy];
+  }
 }
 
 /** Combines several holes into one, e.g. a circle wrapped in ring text. */
@@ -350,5 +371,9 @@ export class CompositeHole extends Hole {
 
   build(): HoleGeometry {
     return mergeHoleGeometry(this.holes.map((hole) => hole.build()));
+  }
+
+  referenceCenter(): [number, number] {
+    return this.holes[0]?.referenceCenter() ?? [0, 0];
   }
 }

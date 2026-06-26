@@ -11,7 +11,7 @@ import paperTextureUrl from '../../assets/paperTexture.jpg';
 
 const COVER_COLOR = 0xdccfc2;
 const PAPER_TEXTURE_SIZE = 768;
-const COVER_TOP_LEFT_COLOR = '#FF6436';
+const COVER_TOP_LEFT_COLOR = '#FCEAD7';
 const COVER_BOTTOM_RIGHT_COLOR = '#B59BC8';
 const GRAIN_OPACITY = 0.55;
 const GRAIN_TILE_SIZE = 384;

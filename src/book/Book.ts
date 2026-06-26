@@ -2,21 +2,20 @@ import * as THREE from 'three';
 import {
   Page,
   THICKNESS,
-  PAGE_FRONT_NORMAL,
   FRONT_FACE_Z,
-  getLeftHingeX,
   getPageHeight,
   PAGE_REFERENCE,
   setPageViewportAspect,
+  scaleHoleCoord,
 } from './page';
 import { PageNode, Portal, createBookTree } from './bookTree';
 import { mergeHoleGeometry } from './holes';
 import { onFontReady } from './font';
 
-/** Duration of a single page turn animation (seconds). */
+/** Duration of the pull-toward-camera reveal (seconds). */
 export let PageTurnDuration = 1.5;
 
-/** Total time budget for turning all pages in one navigation (seconds). */
+/** @deprecated Kept for compatibility; reveal moves all pages as one block. */
 export let TotalPageTurnDuration = 1.5;
 
 /** World-space direction toward the reader (camera on +Z, pages face +Z). */
@@ -31,11 +30,11 @@ export function perspectiveFovForPageBounds(): number {
   return THREE.MathUtils.radToDeg(2 * Math.atan(halfHeight / BOOK_CAMERA_DISTANCE));
 }
 
-type Flip = {
-  pivot: THREE.Group;
-  page: Page;
+type PullReveal = {
+  group: THREE.Group;
+  pages: Page[];
   elapsed: number;
-  startDelay: number;
+  endPosition: THREE.Vector3;
   finished: boolean;
 };
 
@@ -65,8 +64,8 @@ type Flip = {
  * Cover { A, B, C }   B { C, A }   C { A }   A { }
  * ```
  *
- * Flipping away every page in front of A then reveals it as a clean page. A
- * becomes the new root and the same logic applies to its own portals.
+ * Pulling every page in front of A toward the camera then reveals it as a clean
+ * page. A becomes the new root and the same logic applies to its own portals.
  */
 export class Book {
   readonly group = new THREE.Group();
@@ -80,7 +79,7 @@ export class Book {
 
   // private readonly frontIndicator: THREE.ArrowHelper;
 
-  private activeFlips: Flip[] = [];
+  private activeReveal: PullReveal | null = null;
   private pendingChild: PageNode | null = null;
 
   private readonly raycaster = new THREE.Raycaster();
@@ -114,7 +113,7 @@ export class Book {
   }
 
   get isAnimating(): boolean {
-    return this.activeFlips.length > 0;
+    return this.activeReveal !== null;
   }
 
   getWorldFocusPoint(target = new THREE.Vector3()): THREE.Vector3 {
@@ -155,15 +154,15 @@ export class Book {
     const portalIndex = this.orderedPortals.findIndex((p) => p.child.page === page);
     if (portalIndex === -1) return;
 
-    this.openPortal(portalIndex);
+    this.openPortal(portalIndex, camera);
   }
 
   update(delta: number) {
     for (const page of this.mounted) {
       page.update(delta);
     }
-    if (this.activeFlips.length > 0) {
-      this.advanceFlips(delta);
+    if (this.activeReveal) {
+      this.advanceReveal(delta);
     }
   }
 
@@ -196,9 +195,9 @@ export class Book {
 
   /**
    * Sends the clicked portal's page to the back, rebuilds the equivalent render,
-   * then flips away everything in front of it before descending into it.
+   * then pulls everything in front of it toward the camera before descending.
    */
-  private openPortal(index: number) {
+  private openPortal(index: number, camera: THREE.Camera) {
     const target = this.orderedPortals[index];
     this.orderedPortals.splice(index, 1);
     this.orderedPortals.push(target);
@@ -213,59 +212,55 @@ export class Book {
       return;
     }
 
-    const delayPerPage =
-      (TotalPageTurnDuration - PageTurnDuration) / pagesInFront.length;
+    const frontPage = pagesInFront[0];
+    const [refCx, refCy] = target.hole.referenceCenter();
+    const [holeX, holeY] = scaleHoleCoord(refCx, refCy);
+    const holeOnPage = new THREE.Vector3(holeX, holeY, FRONT_FACE_Z);
+    const holeInGroup = frontPage.mesh.position.clone().add(holeOnPage);
 
-    this.activeFlips = pagesInFront.map((page, index) => {
-      const pivotZ = page.mesh.position.z;
-      const pivot = new THREE.Group();
-      pivot.position.set(getLeftHingeX(), 0, pivotZ);
-      this.group.add(pivot);
+    const cameraInGroup = camera.position.clone();
+    this.group.worldToLocal(cameraInGroup);
+    const endPosition = cameraInGroup.sub(holeInGroup);
 
-      this.group.remove(page.mesh);
-      page.mesh.position.x -= getLeftHingeX();
-      page.mesh.position.z -= pivotZ;
-      pivot.add(page.mesh);
-
-      return {
-        pivot,
-        page,
-        elapsed: 0,
-        startDelay: index * delayPerPage,
-        finished: false,
-      };
-    });
-  }
-
-  private advanceFlips(delta: number) {
-    for (const flip of this.activeFlips) {
-      if (flip.finished) continue;
-
-      flip.elapsed += delta;
-
-      if (flip.elapsed < flip.startDelay) continue;
-
-      const t = Math.min((flip.elapsed - flip.startDelay) / PageTurnDuration, 1);
-      const eased = t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
-      flip.pivot.rotation.y = -eased * Math.PI;
-
-      if (t >= 1) {
-        flip.finished = true;
-        this.cleanupFlip(flip);
-      }
+    const pullGroup = new THREE.Group();
+    this.group.add(pullGroup);
+    for (const page of pagesInFront) {
+      pullGroup.attach(page.mesh);
     }
 
-    if (this.activeFlips.every((flip) => flip.finished)) {
-      this.activeFlips = [];
+    this.activeReveal = {
+      group: pullGroup,
+      pages: pagesInFront,
+      elapsed: 0,
+      endPosition,
+      finished: false,
+    };
+  }
+
+  private advanceReveal(delta: number) {
+    const reveal = this.activeReveal;
+    if (!reveal || reveal.finished) return;
+
+    reveal.elapsed += delta;
+    const t = Math.min(reveal.elapsed / PageTurnDuration, 1);
+    const eased = t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
+    reveal.group.position.copy(reveal.endPosition).multiplyScalar(eased);
+
+    if (t >= 1) {
+      reveal.finished = true;
+      this.cleanupReveal(reveal);
+      this.activeReveal = null;
       this.descend();
     }
   }
 
-  private cleanupFlip(flip: Flip) {
-    flip.pivot.remove(flip.page.mesh);
-    this.group.remove(flip.pivot);
-    this.mounted = this.mounted.filter((page) => page !== flip.page);
-    flip.page.dispose();
+  private cleanupReveal(reveal: PullReveal) {
+    for (const page of reveal.pages) {
+      reveal.group.remove(page.mesh);
+      page.dispose();
+    }
+    this.group.remove(reveal.group);
+    this.mounted = this.mounted.filter((page) => !reveal.pages.includes(page));
   }
 
   /** Makes the opened page the new root and mounts its children behind it. */
@@ -274,7 +269,7 @@ export class Book {
     this.pendingChild = null;
     if (!child) return;
 
-    // The opened page survived the flips; its former siblings are gone. Free any
+    // The opened page survived the reveal; its former siblings are gone. Free any
     // of their descendants that were created but never mounted.
     for (let i = 0; i < this.orderedPortals.length - 1; i++) {
       disposeDescendants(this.orderedPortals[i].child);
