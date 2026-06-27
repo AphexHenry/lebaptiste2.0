@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import {
-  FRONT_FACE_Z,
   Page,
   configureBitmapTexture,
   createTexturedFrontFace,
@@ -27,17 +26,28 @@ type ResumeEntry = {
 
 type ResumeRecord = {
   entry: ResumeEntry;
-  group: THREE.Group;
-  position: THREE.Vector3;
+  position: THREE.Vector2;
   radius: number;
+  accentColor: number;
 };
 
 type SatelliteOrbit = {
-  group: THREE.Group;
-  parent: THREE.Group;
+  entry: ResumeEntry;
+  parent: ResumeRecord;
   phase: number;
   speedScale: number;
   radius: number;
+  accentColor: number;
+};
+
+type PageLayout = {
+  pageWidth: number;
+  pageHeight: number;
+  contentWidth: number;
+  contentHeight: number;
+  center: THREE.Vector2;
+  mainRecords: ResumeRecord[];
+  satelliteOrbits: SatelliteOrbit[];
 };
 
 const RESUME_ENTRIES: ResumeEntry[] = [
@@ -301,14 +311,10 @@ const RESUME_ENTRIES: ResumeEntry[] = [
   },
 ];
 
-/**
- * Resume ink sits just above the textured front face. Pages in the stack are
- * only 0.01 apart, so pushing decorations far in +Z makes them bleed through
- * pages in front (e.g. the cover).
- */
-const RESUME_BASE_Z = FRONT_FACE_Z + 0.006;
-const RESUME_LABEL_LIFT = 0.001;
+const RESUME_LAYOUT_CENTER = { x: -0.04, y: -0.02 };
 const PAPER_WHITE = '#f7f1e7';
+/** Pixel height of the page canvas; width follows page aspect ratio. */
+const PAGE_CANVAS_HEIGHT = 2048;
 /** 16 accents tuned for contrast on warm beige: crisp blues/teals, coral, jewel tones. */
 const RESUME_ACCENT_COLORS = [
   0x2563eb, 0x0891b2, 0x14b8a6, 0x0f766e, 0x4338ca, 0x7c3aed, 0xa855f7, 0xd946ef,
@@ -368,7 +374,7 @@ function subtitle(entry: ResumeEntry) {
 function pathPosition(
   index: number,
   total: number,
-  center: THREE.Vector3,
+  center: THREE.Vector2,
   width: number,
   height: number,
   entry: ResumeEntry,
@@ -380,12 +386,12 @@ function pathPosition(
   const x = center.x + Math.sin(t * Math.PI) * curveAmp - width * 0.09 + offset;
   const y = center.y + verticalSpan * 0.5 * (1 - 2 * t);
   const lateral = Math.sin(index * GOLDEN_ANGLE) * width * 0.025;
-  return new THREE.Vector3(x + lateral, y, center.z);
+  return new THREE.Vector2(x + lateral, y);
 }
 
 function layoutResumeParticlePositions(
   entries: ResumeEntry[],
-  center: THREE.Vector3,
+  center: THREE.Vector2,
   width: number,
   height: number,
 ) {
@@ -424,38 +430,23 @@ function layoutResumeParticlePositions(
   return positions;
 }
 
-function spinePosition(index: number, total: number, center: THREE.Vector3, width: number, height: number) {
+function spinePosition(index: number, total: number, center: THREE.Vector2, width: number, height: number) {
   const t = total <= 1 ? 0.5 : index / (total - 1);
   const verticalSpan = height * 0.78;
-  return new THREE.Vector3(
+  return new THREE.Vector2(
     center.x + Math.sin(t * Math.PI) * width * 0.18 - width * 0.08,
     center.y + verticalSpan * 0.5 * (1 - 2 * t),
-    center.z - 0.004,
-  );
-}
-
-function hermitePoint(p1: THREE.Vector3, p2: THREE.Vector3, m1: THREE.Vector3, m2: THREE.Vector3, t: number) {
-  const t2 = t * t;
-  const t3 = t2 * t;
-  const h00 = 2 * t3 - 3 * t2 + 1;
-  const h10 = t3 - 2 * t2 + t;
-  const h01 = -2 * t3 + 3 * t2;
-  const h11 = t3 - t2;
-  return new THREE.Vector3(
-    p1.x * h00 + m1.x * h10 + p2.x * h01 + m2.x * h11,
-    p1.y * h00 + m1.y * h10 + p2.y * h01 + m2.y * h11,
-    p1.z * h00 + m1.z * h10 + p2.z * h01 + m2.z * h11,
   );
 }
 
 function decorativePathPoints(
   entries: ResumeEntry[],
-  center: THREE.Vector3,
+  center: THREE.Vector2,
   width: number,
   height: number,
 ) {
   const anchors = entries.map((_, index) => spinePosition(index, entries.length, center, width, height));
-  const points: THREE.Vector3[] = [];
+  const points: THREE.Vector2[] = [];
   if (anchors.length < 2) return points;
 
   for (let i = 0; i < anchors.length - 1; i++) {
@@ -464,28 +455,76 @@ function decorativePathPoints(
     const prev = anchors[Math.max(0, i - 1)];
     const next = anchors[Math.min(anchors.length - 1, i + 1)];
     const nextNext = anchors[Math.min(anchors.length - 1, i + 2)];
-    const tangentIn = new THREE.Vector3().subVectors(next, prev).multiplyScalar(0.5);
-    const tangentOut = new THREE.Vector3().subVectors(nextNext, p1).multiplyScalar(0.5);
+    const tangentIn = new THREE.Vector2().subVectors(next, prev).multiplyScalar(0.5);
+    const tangentOut = new THREE.Vector2().subVectors(nextNext, p1).multiplyScalar(0.5);
     for (let sample = 0; sample < 24; sample++) {
-      points.push(hermitePoint(p1, p2, tangentIn, tangentOut, sample / 24));
+      const t = sample / 24;
+      const t2 = t * t;
+      const t3 = t2 * t;
+      const h00 = 2 * t3 - 3 * t2 + 1;
+      const h10 = t3 - 2 * t2 + t;
+      const h01 = -2 * t3 + 3 * t2;
+      const h11 = t3 - t2;
+      points.push(
+        new THREE.Vector2(
+          p1.x * h00 + tangentIn.x * h10 + p2.x * h01 + tangentOut.x * h11,
+          p1.y * h00 + tangentIn.y * h10 + p2.y * h01 + tangentOut.y * h11,
+        ),
+      );
     }
   }
   points.push(anchors[anchors.length - 1].clone());
   return points;
 }
 
-function createDecorativeDashedPath(entries: ResumeEntry[], center: THREE.Vector3, width: number, height: number) {
+type CanvasMapper = {
+  pageToCanvas(x: number, y: number): { x: number; y: number };
+  pageLengthToCanvas(length: number): number;
+};
+
+function createCanvasMapper(pageWidth: number, pageHeight: number, canvasWidth: number, canvasHeight: number): CanvasMapper {
+  return {
+    pageToCanvas(x, y) {
+      return {
+        x: ((x + pageWidth / 2) / pageWidth) * canvasWidth,
+        y: ((pageHeight / 2 - y) / pageHeight) * canvasHeight,
+      };
+    },
+    pageLengthToCanvas(length) {
+      return (length / pageHeight) * canvasHeight;
+    },
+  };
+}
+
+function canvasSizeForPage(pageWidth: number, pageHeight: number) {
+  const height = PAGE_CANVAS_HEIGHT;
+  const width = Math.max(1, Math.round(height * (pageWidth / pageHeight)));
+  return { width, height };
+}
+
+function drawDecorativeDashedPath(
+  ctx: CanvasRenderingContext2D,
+  entries: ResumeEntry[],
+  center: THREE.Vector2,
+  width: number,
+  height: number,
+  map: CanvasMapper,
+) {
   const points = decorativePathPoints(entries, center, width, height);
-  const vertices: number[] = [];
-  const dashLength = height * 0.012;
-  const gapLength = height * 0.008;
+  const dashLength = map.pageLengthToCanvas(height * 0.012);
+  const gapLength = map.pageLengthToCanvas(height * 0.008);
   let drawRemaining = dashLength;
   let gapRemaining = 0;
 
+  ctx.strokeStyle = accentCssColor(PATH_COLOR);
+  ctx.globalAlpha = 0.35;
+  ctx.lineWidth = map.pageLengthToCanvas(height * 0.0025);
+  ctx.lineCap = 'round';
+
   for (let i = 1; i < points.length; i++) {
-    const from = points[i - 1].clone();
+    const from = points[i - 1];
     const to = points[i];
-    const delta = new THREE.Vector3().subVectors(to, from);
+    const delta = new THREE.Vector2().subVectors(to, from);
     const length = delta.length();
     if (length < 1e-6) continue;
     const unit = delta.multiplyScalar(1 / length);
@@ -501,45 +540,29 @@ function createDecorativeDashedPath(entries: ResumeEntry[], center: THREE.Vector
         const step = Math.min(drawRemaining, remaining);
         const start = from.clone().addScaledVector(unit, walked);
         const end = from.clone().addScaledVector(unit, walked + step);
-        vertices.push(start.x, start.y, start.z, end.x, end.y, end.z);
+        const p0 = map.pageToCanvas(start.x, start.y);
+        const p1 = map.pageToCanvas(end.x, end.y);
+        ctx.beginPath();
+        ctx.moveTo(p0.x, p0.y);
+        ctx.lineTo(p1.x, p1.y);
+        ctx.stroke();
         walked += step;
         drawRemaining -= step;
         if (drawRemaining <= 1e-6) gapRemaining = gapLength;
       }
     }
   }
-
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-  const material = new THREE.LineBasicMaterial({
-    color: PATH_COLOR,
-    transparent: true,
-    opacity: 0.35,
-  });
-  const line = new THREE.LineSegments(geometry, material);
-  line.name = 'resumeDecorativeDashedPath';
-  return line;
+  ctx.globalAlpha = 1;
 }
 
-function createTextureCanvas(size: number) {
-  const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) throw new Error('Unable to create About Me canvas context');
-  return { canvas, ctx };
-}
-
-function createCanvasTexture(canvas: HTMLCanvasElement) {
-  const texture = configureBitmapTexture(new THREE.CanvasTexture(canvas));
-  texture.needsUpdate = true;
-  return texture;
-}
-
-function drawStudentMortarboard(ctx: CanvasRenderingContext2D, size: number, accentColor: number) {
+function drawStudentMortarboard(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  size: number,
+  accentColor: number,
+) {
   const unit = size * 0.22;
-  const cx = size * 0.53;
-  const cy = size * 0.34;
   ctx.save();
   ctx.translate(cx, cy);
   ctx.rotate(-2.5);
@@ -564,18 +587,16 @@ function drawStudentMortarboard(ctx: CanvasRenderingContext2D, size: number, acc
   ctx.restore();
 }
 
-function drawWavyCircle(ctx: CanvasRenderingContext2D, entry: ResumeEntry, size: number) {
-  const center = size / 2;
-  const radius = size * 0.2;
+function drawWavyCirclePath(ctx: CanvasRenderingContext2D, entry: ResumeEntry, cx: number, cy: number, radius: number) {
   const waveCount = 34 * entry.importance * 2.2;
-  const amplitude = size * 0.055;
+  const amplitude = radius * 0.28;
   const phase = deterministicPhase(entry);
   ctx.beginPath();
   for (let i = 0; i <= 120; i++) {
     const angle = (i / 120) * Math.PI * 2;
     const waveRadius = radius + Math.sin(angle * waveCount + phase) * amplitude;
-    const x = center + Math.cos(angle) * waveRadius;
-    const y = center + Math.sin(angle) * waveRadius;
+    const x = cx + Math.cos(angle) * waveRadius;
+    const y = cy + Math.sin(angle) * waveRadius;
     i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
   }
   ctx.closePath();
@@ -590,47 +611,43 @@ function deterministicPhase(entry: ResumeEntry) {
   return ((hash % 6283) / 6283) * Math.PI * 2;
 }
 
-function createCirclePlane(entry: ResumeEntry, radius: number, accentColor: number) {
-  const size = 256;
-  const { canvas, ctx } = createTextureCanvas(size);
-  ctx.clearRect(0, 0, size, size);
+function drawResumeCircle(
+  ctx: CanvasRenderingContext2D,
+  entry: ResumeEntry,
+  position: THREE.Vector2,
+  radius: number,
+  accentColor: number,
+  map: CanvasMapper,
+) {
+  const { x: cx, y: cy } = map.pageToCanvas(position.x, position.y);
+  const drawRadius = map.pageLengthToCanvas(radius * 1.05);
+  const spriteSize = drawRadius * 3.25;
 
   if (entry.company === 'Tangible Interaction') {
     ctx.fillStyle = '#f0eee8';
     ctx.beginPath();
-    ctx.arc(size / 2, size / 2, size * 0.32, 0, Math.PI * 2);
+    ctx.arc(cx, cy, drawRadius * 1.02, 0, Math.PI * 2);
     ctx.fill();
   }
 
   ctx.strokeStyle = accentCssColor(accentColor);
   ctx.fillStyle = PAPER_WHITE;
-  ctx.lineWidth = entry.importance < 0.5 ? size * 0.009 : size * 0.012;
+  ctx.lineWidth = entry.importance < 0.5 ? drawRadius * 0.06 : drawRadius * 0.08;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
 
   if (entry.type === 'art') {
-    drawWavyCircle(ctx, entry, size);
+    drawWavyCirclePath(ctx, entry, cx, cy, drawRadius);
     ctx.stroke();
   } else {
     ctx.beginPath();
-    ctx.arc(size / 2, size / 2, size * 0.31, 0, Math.PI * 2);
+    ctx.arc(cx, cy, drawRadius, 0, Math.PI * 2);
     ctx.stroke();
   }
 
-  if (entry.type === 'study') drawStudentMortarboard(ctx, size, accentColor);
-
-  const texture = createCanvasTexture(canvas);
-  const material = new THREE.MeshBasicMaterial({
-    map: texture,
-    transparent: true,
-    toneMapped: false,
-    depthTest: true,
-    depthWrite: false,
-  });
-  const geometry = new THREE.PlaneGeometry(radius * 3.4, radius * 3.4);
-  const mesh = new THREE.Mesh(geometry, material);
-  mesh.name = `resumeCircle:${entry.company}`;
-  return mesh;
+  if (entry.type === 'study') {
+    drawStudentMortarboard(ctx, cx, cy, spriteSize, accentColor);
+  }
 }
 
 function roundedRect(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, radius: number) {
@@ -647,244 +664,298 @@ function roundedRect(ctx: CanvasRenderingContext2D, x: number, y: number, width:
   ctx.closePath();
 }
 
-function createTextPlane(
+function drawTextLabel(
+  ctx: CanvasRenderingContext2D,
   lines: string[],
-  width: number,
-  height: number,
+  centerX: number,
+  centerY: number,
+  worldWidth: number,
+  worldHeight: number,
   fontSize: number,
   align: CanvasTextAlign,
   accentColor: number,
+  map: CanvasMapper,
 ) {
-  const scale = 180;
-  const canvasWidth = Math.max(1, Math.round(width * scale));
-  const canvasHeight = Math.max(1, Math.round(height * scale));
-  const { canvas, ctx } = createTextureCanvas(Math.max(canvasWidth, canvasHeight));
-  canvas.width = canvasWidth;
-  canvas.height = canvasHeight;
+  const widthPx = map.pageLengthToCanvas(worldWidth);
+  const heightPx = map.pageLengthToCanvas(worldHeight);
+  const left = centerX - widthPx / 2;
+  const top = centerY - heightPx / 2;
+  /** Matches the 180px-per-world-unit scale used by the old per-label canvases. */
+  const pixelsPerUnit = map.pageLengthToCanvas(1) / 180;
 
-  ctx.clearRect(0, 0, canvasWidth, canvasHeight);
   ctx.fillStyle = 'rgba(247, 241, 231, 0.58)';
-  roundedRect(ctx, 0, 0, canvasWidth, canvasHeight, Math.min(canvasWidth, canvasHeight) * 0.12);
+  roundedRect(ctx, left, top, widthPx, heightPx, Math.min(widthPx, heightPx) * 0.12);
   ctx.fill();
+
   ctx.fillStyle = accentCssColor(accentColor);
   ctx.textAlign = align;
   ctx.textBaseline = 'middle';
-  const x = align === 'left' ? canvasWidth * 0.08 : align === 'right' ? canvasWidth * 0.92 : canvasWidth / 2;
+  const textX =
+    align === 'left' ? left + widthPx * 0.08 : align === 'right' ? left + widthPx * 0.92 : centerX;
+
   lines.forEach((line, index) => {
-    ctx.font = `${index === 0 ? fontSize : fontSize * 0.7}px Georgia, serif`;
+    ctx.font = `${(index === 0 ? fontSize : fontSize * 0.7) * pixelsPerUnit}px Georgia, serif`;
     ctx.globalAlpha = index === 0 ? 0.92 : 0.68;
-    ctx.fillText(line, x, canvasHeight * (0.36 + index * 0.31), canvasWidth * 0.84);
+    ctx.fillText(line, textX, top + heightPx * (0.36 + index * 0.31), widthPx * 0.84);
   });
-
-  const texture = createCanvasTexture(canvas);
-  const material = new THREE.MeshBasicMaterial({
-    map: texture,
-    transparent: true,
-    toneMapped: false,
-    depthTest: true,
-    depthWrite: false,
-  });
-  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(width, height), material);
-  return mesh;
+  ctx.globalAlpha = 1;
 }
 
-function createCalloutLine(from: THREE.Vector3, to: THREE.Vector3, accentColor: number) {
-  const geometry = new THREE.BufferGeometry().setFromPoints([from, to]);
-  const material = new THREE.LineBasicMaterial({
-    color: accentColor,
-    transparent: true,
-    opacity: 0.5,
-  });
-  const line = new THREE.Line(geometry, material);
-  line.name = 'resumeLowImportanceCallout';
-  return line;
-}
-
-function createResumeEntryGroup(
+function drawResumeEntry(
+  ctx: CanvasRenderingContext2D,
   entry: ResumeEntry,
-  position: THREE.Vector3,
+  position: THREE.Vector2,
   pageWidth: number,
   accentColor: number,
+  map: CanvasMapper,
 ) {
   const radius = importanceToRadius(entry.importance);
-  const group = new THREE.Group();
-  group.name = `resumeEntry:${entry.company}`;
-  group.position.copy(position);
-  group.add(createCirclePlane(entry, radius, accentColor));
+  drawResumeCircle(ctx, entry, position, radius, accentColor, map);
 
   if (entry.importance >= 0.5) {
     const labelWidth = Math.min(pageWidth * 0.22, 0.78);
-    const label = createTextPlane(
+    const labelCenter = map.pageToCanvas(position.x, position.y - radius * 1.65 - 0.12);
+    drawTextLabel(
+      ctx,
       [shortLabel(entry), subtitle(entry)],
+      labelCenter.x,
+      labelCenter.y,
       labelWidth,
       0.18,
       18,
       'center',
       accentColor,
+      map,
     );
-    label.position.set(0, -radius * 1.65 - 0.12, RESUME_LABEL_LIFT);
-    group.add(label);
-  } else {
-    const side = position.x > 0 ? -1 : 1;
-    const angle = entry.calloutAngle ?? Math.atan2(-1.35, side * 4.65);
-    const direction = new THREE.Vector3(Math.cos(angle), Math.sin(angle), 0);
-    const lineStart = direction.clone().multiplyScalar(radius * 1.05);
-    const lineEnd = direction.clone().multiplyScalar(radius + 0.33);
-    group.add(createCalloutLine(lineStart, lineEnd, accentColor));
-    const label = createTextPlane(
-      [shortLabel(entry), entry.years || entry.title],
-      0.5,
-      0.13,
-      14,
-      side > 0 ? 'left' : 'right',
-      accentColor,
-    );
-    label.position.copy(lineEnd).add(new THREE.Vector3(side * 0.28, 0, RESUME_LABEL_LIFT));
-    group.add(label);
+    return;
   }
 
-  return { entry, group, position, radius };
+  const side = position.x > 0 ? -1 : 1;
+  const angle = entry.calloutAngle ?? Math.atan2(-1.35, side * 4.65);
+  const direction = new THREE.Vector2(Math.cos(angle), Math.sin(angle));
+  const lineStart = position.clone().addScaledVector(direction, radius * 1.05);
+  const lineEnd = position.clone().addScaledVector(direction, radius + 0.33);
+  const p0 = map.pageToCanvas(lineStart.x, lineStart.y);
+  const p1 = map.pageToCanvas(lineEnd.x, lineEnd.y);
+
+  ctx.strokeStyle = accentCssColor(accentColor);
+  ctx.globalAlpha = 0.5;
+  ctx.lineWidth = map.pageLengthToCanvas(0.004);
+  ctx.beginPath();
+  ctx.moveTo(p0.x, p0.y);
+  ctx.lineTo(p1.x, p1.y);
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+
+  const labelCenter = map.pageToCanvas(lineEnd.x + side * 0.28, lineEnd.y);
+  drawTextLabel(
+    ctx,
+    [shortLabel(entry), entry.years || entry.title],
+    labelCenter.x,
+    labelCenter.y,
+    0.5,
+    0.13,
+    14,
+    side > 0 ? 'left' : 'right',
+    accentColor,
+    map,
+  );
 }
 
-function disposeObject(object: THREE.Object3D) {
-  if (object instanceof THREE.Mesh || object instanceof THREE.Line || object instanceof THREE.LineSegments) {
-    object.geometry.dispose();
-    const materials = Array.isArray(object.material) ? object.material : [object.material];
-    for (const material of materials) {
-      material.map?.dispose();
-      material.dispose();
-    }
+function satellitePosition(orbit: SatelliteOrbit, orbitAngle: number) {
+  const angle = orbitAngle * orbit.speedScale + orbit.phase;
+  return new THREE.Vector2(
+    orbit.parent.position.x + Math.cos(angle) * orbit.radius,
+    orbit.parent.position.y + Math.sin(angle - 0.6) * orbit.radius * 0.34,
+  );
+}
+
+function buildPageLayout(): PageLayout {
+  const page = getPageDimensions();
+  const contentWidth = page.width * 0.86;
+  const contentHeight = page.height * 0.9;
+  const center = new THREE.Vector2(
+    page.width * RESUME_LAYOUT_CENTER.x,
+    page.height * RESUME_LAYOUT_CENTER.y,
+  );
+  const chronological = chronologicalEntries();
+  const mainEntries = stackEntries(chronological);
+  const positions = layoutResumeParticlePositions(mainEntries, center, contentWidth, contentHeight);
+  const mainRecords: ResumeRecord[] = [];
+  const satelliteOrbits: SatelliteOrbit[] = [];
+
+  let colorIndex = 0;
+  mainEntries.forEach((entry, index) => {
+    mainRecords.push({
+      entry,
+      position: positions[index],
+      radius: importanceToRadius(entry.importance),
+      accentColor: accentColorAt(colorIndex++),
+    });
+  });
+
+  const satelliteGroups = new Map<string, ResumeEntry[]>();
+  for (const entry of chronological) {
+    const parent = findSatelliteParent(entry, chronological);
+    if (!parent) continue;
+    const parentName = satelliteParentName(entry);
+    satelliteGroups.set(parentName, [...(satelliteGroups.get(parentName) ?? []), entry]);
+  }
+
+  for (const satellites of satelliteGroups.values()) {
+    satellites.forEach((entry, index) => {
+      const parent = findSatelliteParent(entry, chronological);
+      const parentRecord = parent ? mainRecords.find((record) => record.entry === parent) : null;
+      if (!parentRecord) return;
+
+      const phase = (index / satellites.length) * Math.PI * 2;
+      const radius = Math.max(parentRecord.radius * 2.3, contentHeight * 0.06);
+      satelliteOrbits.push({
+        entry,
+        parent: parentRecord,
+        phase,
+        speedScale: 0.65 + (index % 3) * 0.24,
+        radius,
+        accentColor: accentColorAt(colorIndex++),
+      });
+    });
+  }
+
+  return {
+    pageWidth: page.width,
+    pageHeight: page.height,
+    contentWidth,
+    contentHeight,
+    center,
+    mainRecords,
+    satelliteOrbits,
+  };
+}
+
+function drawPageToCanvas(
+  ctx: CanvasRenderingContext2D,
+  canvasWidth: number,
+  canvasHeight: number,
+  layout: PageLayout,
+  backgroundImage: HTMLImageElement | null,
+  orbitAngle: number,
+) {
+  const { pageWidth, pageHeight, contentWidth, contentHeight, center, mainRecords, satelliteOrbits } = layout;
+  const map = createCanvasMapper(pageWidth, pageHeight, canvasWidth, canvasHeight);
+
+  ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+
+  if (backgroundImage) {
+    ctx.drawImage(backgroundImage, 0, 0, canvasWidth, canvasHeight);
+  } else {
+    ctx.fillStyle = '#d4b896';
+    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+  }
+
+  drawDecorativeDashedPath(ctx, mainRecords.map((record) => record.entry), center, contentWidth, contentHeight, map);
+
+  for (const record of mainRecords) {
+    drawResumeEntry(ctx, record.entry, record.position, contentWidth, record.accentColor, map);
+  }
+
+  for (const orbit of satelliteOrbits) {
+    const position = satellitePosition(orbit, orbitAngle);
+    drawResumeEntry(ctx, orbit.entry, position, contentWidth, orbit.accentColor, map);
   }
 }
 
 export class PageAboutMe extends Page {
-  private backgroundTexture: THREE.Texture | null = null;
+  private readonly canvas: HTMLCanvasElement;
+  private readonly ctx: CanvasRenderingContext2D;
+  private pageTexture: THREE.CanvasTexture;
   private texturedFace: THREE.Mesh | null = null;
-  private resumeGroup: THREE.Group | null = null;
-  private readonly satelliteOrbits: SatelliteOrbit[] = [];
+  private backgroundImage: HTMLImageElement | null = null;
+  private layout: PageLayout | null = null;
   private satelliteOrbitAngle = 0;
 
   constructor() {
     super(0xd4b896, 'About Me');
+
+    const page = getPageDimensions();
+    const { width, height } = canvasSizeForPage(page.width, page.height);
+    this.canvas = document.createElement('canvas');
+    this.canvas.width = width;
+    this.canvas.height = height;
+    const ctx = this.canvas.getContext('2d');
+    if (!ctx) throw new Error('Unable to create About Me canvas context');
+    this.ctx = ctx;
+    this.pageTexture = configureBitmapTexture(new THREE.CanvasTexture(this.canvas));
+
+    this.layout = buildPageLayout();
     this.rebuildDecorations();
 
-    new THREE.TextureLoader().load(
-      backgroundUrl,
-      (texture) => {
-        this.backgroundTexture = texture;
-        this.rebuildDecorations();
-      },
-      undefined,
-      (error) => {
-        console.error('Failed to load About Me page background:', error);
-      },
-    );
+    const image = new Image();
+    image.onload = () => {
+      this.backgroundImage = image;
+      this.redrawCanvas();
+      this.refreshTexturedFace();
+    };
+    image.onerror = (error) => {
+      console.error('Failed to load About Me page background:', error);
+    };
+    image.src = backgroundUrl;
   }
 
   protected rebuildDecorations() {
-    if (this.texturedFace) {
-      this.mesh.remove(this.texturedFace);
-      this.texturedFace.geometry.dispose();
-      const material = this.texturedFace.material as THREE.MeshBasicMaterial;
-      material.map = null;
-      material.dispose();
-      this.texturedFace = null;
+    const page = getPageDimensions();
+    const { width, height } = canvasSizeForPage(page.width, page.height);
+    if (this.canvas.width !== width || this.canvas.height !== height) {
+      this.canvas.width = width;
+      this.canvas.height = height;
+      this.pageTexture.dispose();
+      this.pageTexture = configureBitmapTexture(new THREE.CanvasTexture(this.canvas));
     }
 
-    this.clearResumeGroup();
-
-    if (this.backgroundTexture) {
-      this.texturedFace = createTexturedFrontFace(this.backgroundTexture, this.holes, this.counters);
-      this.mesh.add(this.texturedFace);
-    }
-
-    this.resumeGroup = this.createResumeGroup();
-    this.mesh.add(this.resumeGroup);
+    this.layout = buildPageLayout();
+    this.redrawCanvas();
+    this.refreshTexturedFace();
   }
 
   update(delta: number) {
-    super.update(delta);
-    this.satelliteOrbitAngle += delta * SATELLITE_ORBIT_SPEED;
-
-    for (const orbit of this.satelliteOrbits) {
-      const angle = this.satelliteOrbitAngle * orbit.speedScale + orbit.phase;
-      orbit.group.position.set(
-        orbit.parent.position.x + Math.cos(angle) * orbit.radius,
-        orbit.parent.position.y + Math.sin(angle - 0.6) * orbit.radius * 0.34,
-        orbit.parent.position.z,
-      );
+    if (this.readerVisible && !document.hidden && this.layout) {
+      this.satelliteOrbitAngle += delta * SATELLITE_ORBIT_SPEED;
+      this.redrawCanvas();
+      this.pageTexture.needsUpdate = true;
     }
+    super.update(delta);
   }
 
   dispose() {
-    this.clearResumeGroup();
+    this.disposeTexturedFace();
+    this.pageTexture.dispose();
     super.dispose();
   }
 
-  private clearResumeGroup() {
-    this.satelliteOrbits.length = 0;
-    if (!this.resumeGroup) return;
-    this.mesh.remove(this.resumeGroup);
-    this.resumeGroup.traverse(disposeObject);
-    this.resumeGroup.clear();
-    this.resumeGroup = null;
+  private redrawCanvas() {
+    if (!this.layout) return;
+    drawPageToCanvas(
+      this.ctx,
+      this.canvas.width,
+      this.canvas.height,
+      this.layout,
+      this.backgroundImage,
+      this.satelliteOrbitAngle,
+    );
   }
 
-  private createResumeGroup() {
-    const page = getPageDimensions();
-    const width = page.width * 0.86;
-    const height = page.height * 0.9;
-    const center = new THREE.Vector3(-page.width * 0.04, -page.height * 0.02, RESUME_BASE_Z);
-    const chronological = chronologicalEntries();
-    const mainEntries = stackEntries(chronological);
-    const positions = layoutResumeParticlePositions(mainEntries, center, width, height);
-    const group = new THREE.Group();
-    const records: ResumeRecord[] = [];
+  private refreshTexturedFace() {
+    this.disposeTexturedFace();
+    this.texturedFace = createTexturedFrontFace(this.pageTexture, this.holes, this.counters);
+    this.mesh.add(this.texturedFace);
+  }
 
-    group.name = 'aboutMeResumeParticles';
-    group.add(createDecorativeDashedPath(mainEntries, center, width, height));
-
-    let colorIndex = 0;
-    mainEntries.forEach((entry, index) => {
-      const record = createResumeEntryGroup(entry, positions[index], width, accentColorAt(colorIndex++));
-      records.push(record);
-      group.add(record.group);
-    });
-
-    const satelliteGroups = new Map<string, ResumeEntry[]>();
-    for (const entry of chronological) {
-      const parent = findSatelliteParent(entry, chronological);
-      if (!parent) continue;
-      const parentName = satelliteParentName(entry);
-      satelliteGroups.set(parentName, [...(satelliteGroups.get(parentName) ?? []), entry]);
-    }
-
-    for (const satellites of satelliteGroups.values()) {
-      satellites.forEach((entry, index) => {
-        const parent = findSatelliteParent(entry, chronological);
-        const parentRecord = parent ? records.find((record) => record.entry === parent) : null;
-        if (!parentRecord) return;
-
-        const phase = (index / satellites.length) * Math.PI * 2;
-        const radius = Math.max(parentRecord.radius * 2.3, height * 0.06);
-        const initial = new THREE.Vector3(
-          parentRecord.group.position.x + Math.cos(phase) * radius,
-          parentRecord.group.position.y + Math.sin(phase * 1.3) * radius * 0.34,
-          parentRecord.group.position.z,
-        );
-        const record = createResumeEntryGroup(entry, initial, width, accentColorAt(colorIndex++));
-        const speedScale = 0.65 + (index % 3) * 0.24;
-        group.add(record.group);
-        this.satelliteOrbits.push({
-          group: record.group,
-          parent: parentRecord.group,
-          phase,
-          speedScale,
-          radius,
-        });
-      });
-    }
-
-    return group;
+  private disposeTexturedFace() {
+    if (!this.texturedFace) return;
+    this.mesh.remove(this.texturedFace);
+    this.texturedFace.geometry.dispose();
+    const material = this.texturedFace.material as THREE.MeshBasicMaterial;
+    material.map = null;
+    material.dispose();
+    this.texturedFace = null;
   }
 }

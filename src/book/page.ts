@@ -184,8 +184,16 @@ export class Page {
     this.rebuildDecorations();
   }
 
+  /** When false, animated canvas textures should skip per-frame redraws. */
+  protected readerVisible = true;
+
   /** Hook for subclasses to (re)build hole-aware decorations such as textures. */
   protected rebuildDecorations() {}
+
+  /** Called by {@link Book} when the page enters or leaves the camera frustum. */
+  setReaderVisible(visible: boolean) {
+    this.readerVisible = visible;
+  }
 
   /** Hook for subclasses with per-frame animation. */
   update(delta: number) {

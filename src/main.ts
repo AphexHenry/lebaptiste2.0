@@ -105,7 +105,7 @@ function bootstrap() {
   function animate() {
     requestAnimationFrame(animate);
     const delta = clock.getDelta();
-    book.update(delta);
+    book.update(delta, camera);
     controls.update();
     lightDebug.update();
     renderer.render(scene, camera);

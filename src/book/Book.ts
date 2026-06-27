@@ -84,6 +84,9 @@ export class Book {
 
   private readonly raycaster = new THREE.Raycaster();
   private readonly pointer = new THREE.Vector2();
+  private readonly frustum = new THREE.Frustum();
+  private readonly projScreenMatrix = new THREE.Matrix4();
+  private readonly pageBounds = new THREE.Box3();
 
   constructor() {
     this.root = createBookTree();
@@ -157,12 +160,28 @@ export class Book {
     this.openPortal(portalIndex, camera);
   }
 
-  update(delta: number) {
+  update(delta: number, camera?: THREE.Camera) {
+    if (camera) {
+      this.updateReaderVisibility(camera);
+    }
     for (const page of this.mounted) {
       page.update(delta);
     }
     if (this.activeReveal) {
       this.advanceReveal(delta);
+    }
+  }
+
+  /** Marks pages in the camera frustum (and with a visible tab) as reader-visible. */
+  private updateReaderVisibility(camera: THREE.Camera) {
+    this.projScreenMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+    this.frustum.setFromProjectionMatrix(this.projScreenMatrix);
+    const tabVisible = typeof document === 'undefined' || !document.hidden;
+
+    for (const page of this.mounted) {
+      page.mesh.updateWorldMatrix(true, false);
+      this.pageBounds.setFromObject(page.mesh);
+      page.setReaderVisible(tabVisible && this.frustum.intersectsBox(this.pageBounds));
     }
   }
 
