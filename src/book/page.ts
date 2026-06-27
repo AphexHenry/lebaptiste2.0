@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { Spaceship } from './spaceship';
 
 /** World units along the shorter viewport axis; the longer axis scales with aspect ratio. */
 export const PAGE_REFERENCE = 4;
@@ -137,6 +138,7 @@ export function createTexturedFrontFace(
 export class Page {
   readonly mesh: THREE.Mesh;
   readonly name: string;
+  private readonly spaceship: Spaceship;
   /** See-through holes currently punched in this page (set by the book layout). */
   protected holes: THREE.Path[] = [];
   /** Solid islands filled back into the holes (e.g. letter counters). */
@@ -151,6 +153,10 @@ export class Page {
     this.mesh.castShadow = true;
     this.mesh.receiveShadow = true;
     this.mesh.userData.page = this;
+
+    this.spaceship = new Spaceship(FRONT_FACE_Z + 0.03);
+    this.spaceship.setBounds(pageDimensions.width, pageDimensions.height);
+    this.mesh.add(this.spaceship.group);
   }
 
   /**
@@ -174,6 +180,7 @@ export class Page {
   rebuildGeometry() {
     this.mesh.geometry.dispose();
     this.mesh.geometry = createPageGeometry(this.holes);
+    this.spaceship.setBounds(pageDimensions.width, pageDimensions.height);
     this.rebuildDecorations();
   }
 
@@ -181,7 +188,9 @@ export class Page {
   protected rebuildDecorations() {}
 
   /** Hook for subclasses with per-frame animation. */
-  update(_delta: number) {}
+  update(delta: number) {
+    this.spaceship.update(delta);
+  }
 
   dispose() {
     this.mesh.traverse((object) => {
